@@ -1,6 +1,7 @@
 # CloudFormation Service Role for Fundamental Platform
 
 This directory contains IAM policies and scripts to create a CloudFormation Service Role. This role allows CloudFormation to deploy the Fundamental Platform stack on behalf of users who may not have direct permissions on all underlying AWS resources.
+Review each policy file before deployment to ensure it meets your organization's security requirements
 
 ## How It Works
 
@@ -111,18 +112,6 @@ The user deploying the stack needs this minimal IAM policy:
   ]
 }
 ```
-
-## Security Notes
-
-- The service role policies are **scoped** where possible:
-  - IAM operations limited to specific role/profile name patterns
-  - S3 operations limited to `*-ftm-*` bucket patterns
-  - Secrets Manager limited to `*-rabbitmq-credentials-*` patterns
-  - CloudWatch Logs limited to `/aws/producer/*` and `/aws/apigateway/*`
-
-- The role can only be assumed by `cloudformation.amazonaws.com` (not by users or other services)
-
-- Review each policy file before deployment to ensure it meets your organization's security requirements
 
 ## Cleanup
 
