@@ -1,0 +1,25 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "APIGatewayOperations",
+      "Effect": "Allow",
+      "Action": [
+        "apigateway:POST",
+        "apigateway:GET",
+        "apigateway:PUT",
+        "apigateway:PATCH",
+        "apigateway:DELETE",
+        "apigateway:UpdateRestApiPolicy"
+      ],
+      "Resource": [
+        "arn:aws:apigateway:*::/restapis",
+        "arn:aws:apigateway:*::/restapis/*",
+        "arn:aws:apigateway:*::/vpclinks",
+        "arn:aws:apigateway:*::/vpclinks/*",
+        "arn:aws:apigateway:*::/account",
+        "arn:aws:apigateway:*::/tags/*"
+      ]
+    }
+  ]
+}
