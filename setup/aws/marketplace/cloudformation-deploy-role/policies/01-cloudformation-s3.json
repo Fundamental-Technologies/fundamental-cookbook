@@ -8,6 +8,11 @@
         "cloudformation:CreateStack",
         "cloudformation:UpdateStack",
         "cloudformation:DeleteStack",
+        "cloudformation:CreateChangeSet",
+        "cloudformation:DeleteChangeSet",
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:ListChangeSets",
         "cloudformation:DescribeStacks",
         "cloudformation:DescribeStackEvents",
         "cloudformation:DescribeStackResource",
@@ -51,7 +56,9 @@
         "s3:DeleteObjectVersion",
         "s3:ListBucketVersions",
         "s3:GetBucketAcl",
-        "s3:PutBucketAcl"
+        "s3:PutBucketAcl",
+        "s3:GetBucketLogging",
+        "s3:PutBucketLogging"
       ],
       "Resource": "*"
     }
