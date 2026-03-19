@@ -1,0 +1,630 @@
+# Deployment Guide
+
+## Part 1: Deploy Fundamental
+
+### Prerequisites
+
+#### AWS Account
+
+- AWS Account with appropriate permissions
+- AWS CLI installed and configured
+
+#### Networking
+
+The Fundamental platform deploys into its own isolated VPC, but requires a "Consumer" VPC where your client applications will reside.
+
+You must have:
+
+- **Consumer VPC ID**: An existing VPC where your client applications will run
+- **Consumer Subnet IDs**: Subnets within that VPC with outbound internet access (to download packages) and connectivity to the Fundamental endpoint
+
+:::warning[Note]
+Ensure you have the full VPC ID (e.g., `vpc-0abc123def456789a`) and Subnet ID (e.g., `subnet-0abc123def456789a`).
+:::
+
+#### Compute Capacity
+
+Ensure your AWS account has capacity for the following instance types in your deployment region:
+
+| Tier | Recommended | Alternative |
+|------|-------------|-------------|
+| **API** | `m7i.4xlarge` | `m7i.2xlarge` |
+| **Model CPU** | `c7i.48xlarge` | `c7i.24xlarge` |
+| **Model GPU** | `p5en.48xlarge` | `p5e.48xlarge` |
+
+### Set Environment Variables
+
+```bash
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+export DEPLOYMENT_REGION=us-west-1
+export FUNDAMENTAL_VERSION=0.1.0
+```
+
+:::info[Supported Regions]
+`us-west-1`, `us-east-1`
+:::
+
+### 1. Permissions
+
+You have two options for permissions:
+
+#### Option A: Deploy as Admin
+
+If you have access to your AWS account's root user or an IAM user with `AdministratorAccess`, you can deploy directly without additional setup.
+
+#### Option B: Use CloudFormation Service Role
+
+We provide a pre-configured CloudFormation Service Role that allows deployment without needing direct permissions on all underlying AWS resources.
+
+**How it works:**
+
+- You create an IAM role that CloudFormation assumes during deployment
+- Users only need permission to run CloudFormation and pass the role
+- The role has the permissions required to create the platform resources
+
+**To create the service role:**
+
+1. Download the IAM service role package from:
+
+```
+git clone https://github.com/Fundamental-Technologies/fundamental-cookbook.git
+```
+
+2. Navigate to the `setup/aws/marketplace/cloudformation-deploy-role` directory:
+
+```bash
+cd setup/aws/marketplace/cloudformation-deploy-role
+```
+
+3. Run the setup script:
+
+```bash
+./create-role.sh
+```
+
+4. Note the Role ARN output - you'll use this when deploying.
+
+**What the script creates:**
+
+- IAM Role: `FundamentalPlatform-CFServiceRole`
+
+**User permissions required:**
+
+Users running the deployment need this minimal policy to use the service role:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateStack",
+        "cloudformation:UpdateStack",
+        "cloudformation:DeleteStack",
+        "cloudformation:DescribeStacks",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:GetTemplate"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::*:role/FundamentalPlatform-CFServiceRole"
+    }
+  ]
+}
+```
+
+### 2. Required Information
+
+Before deploying, collect the following:
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `DeploymentName` | Unique name for this deployment | fundamental |
+| `ConsumerVpc1Id` | VPC ID where your applications will call the API | vpc-0abc123def456 |
+| `ConsumerVpc1SubnetIds` | Comma-separated subnet IDs in that VPC | subnet-111,subnet-222 |
+
+### 3. Stack Configuration (Optional)
+
+The platform deploys with sensible defaults, but you can customize the configuration based on your workload requirements.
+
+#### Compute Tiers
+
+The platform consists of three compute tiers:
+
+| Tier | Purpose | Default Instance | Default Count |
+|------|---------|-----------------|---------------|
+| **API** | Handles incoming API requests | `m7i.4xlarge` | 1 |
+| **ModelCPU** | Runs CPU-based model processing and orchestration | `c7i.48xlarge` | 1 |
+| **ModelGPU** | Runs GPU-accelerated inference workloads | `p5en.48xlarge` | 1 |
+
+| Parameter | Description |
+|-----------|-------------|
+| `ApiInstanceType` | Instance type for API tier |
+| `ApiDesiredCapacity` | Number of API instances |
+| `ModelCpuInstanceType` | Instance type for CPU model tier |
+| `ModelCpuDesiredCapacity` | Number of CPU model instances |
+| `ModelGpuInstanceType` | Instance type for GPU tier |
+| `ModelGpuDesiredCapacity` | Number of GPU instances |
+
+#### Capacity Blocks
+
+For guaranteed GPU capacity, you can use [EC2 Capacity Blocks](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-capacity-blocks.html). Capacity Blocks are tied to a specific Availability Zone, so the GPU instances must be launched in that AZ.
+
+| Parameter | Description |
+|-----------|-------------|
+| `PreferredAvailabilityZone` | The AZ where your Capacity Block is reserved (e.g., `us-west-1a`) |
+| `CapacityReservationId` | Your Capacity Block reservation ID (e.g., `cr-1234567890abcdef0`) |
+
+:::info[Note]
+When using Capacity Blocks, the GPU instances will only launch in the specified Availability Zone. Ensure your Capacity Block is active and has sufficient capacity for your `ModelGpuDesiredCapacity`.
+:::
+
+### 4. Deploy the Platform
+
+#### Using AWS Console
+
+1. Go to **CloudFormation** → **Create stack** → **With new resources**
+2. Select **Amazon S3 URL** and enter:
+
+```
+https://fundamental-ec2-cfn-templates.s3.$DEPLOYMENT_REGION.amazonaws.com/$FUNDAMENTAL_VERSION/templates/root-template.yaml
+```
+
+3. Fill in the parameters from Step 2
+4. If using the service role (Option B), under **Permissions**, select the `FundamentalPlatform-CFServiceRole`
+5. Check the box acknowledging IAM resource creation
+6. Click **Create stack**
+
+#### Using AWS CLI
+
+1. Create a `params.json` file with your configuration:
+
+:::info[Important]
+Replace all `<...>` placeholders with your actual values.
+:::
+
+```json
+[
+  { "ParameterKey": "DeploymentName", "ParameterValue": "<your-deployment-name>" },
+  { "ParameterKey": "ConsumerVpc1Id", "ParameterValue": "<vpc-id>" },
+  { "ParameterKey": "ConsumerVpc1SubnetIds", "ParameterValue": "<subnet-id-1>,<subnet-id-2>" }
+]
+```
+
+**Compute Tiers** (optional):
+
+```json
+  { "ParameterKey": "ApiInstanceType", "ParameterValue": "m7i.4xlarge" },
+  { "ParameterKey": "ModelCpuInstanceType", "ParameterValue": "c7i.48xlarge" },
+  { "ParameterKey": "ModelGpuInstanceType", "ParameterValue": "p5en.48xlarge" }
+```
+
+**Capacity Blocks** (optional):
+
+```json
+  { "ParameterKey": "PreferredAvailabilityZone", "ParameterValue": "${DEPLOYMENT_REGION}a" },
+  { "ParameterKey": "CapacityReservationId", "ParameterValue": "cr-0abc123def456789" }
+```
+
+2. Deploy the stack:
+
+**If you have Admin access (Option A):**
+
+```bash
+aws cloudformation create-stack \
+  --stack-name <your-deployment-name> \
+  --template-url https://fundamental-ec2-cfn-templates.s3.$DEPLOYMENT_REGION.amazonaws.com/$FUNDAMENTAL_VERSION/templates/root-template.yaml \
+  --parameters file://params.json \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region $DEPLOYMENT_REGION
+```
+
+**If using the service role (Option B):**
+
+```bash
+aws cloudformation create-stack \
+  --stack-name <your-deployment-name> \
+  --template-url https://fundamental-ec2-cfn-templates.s3.$DEPLOYMENT_REGION.amazonaws.com/$FUNDAMENTAL_VERSION/templates/root-template.yaml \
+  --parameters file://params.json \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --role-arn arn:aws:iam::$AWS_ACCOUNT_ID:role/FundamentalPlatform-CFServiceRole \
+  --region $DEPLOYMENT_REGION
+```
+
+### 5. Verify Deployment
+
+#### A. Verify Root Stack
+
+Ensure the root stack reports `CREATE_COMPLETE`:
+
+:::info[Note]
+Replace `<your-deployment-name>` with your actual stack name (e.g., `fundamental`).
+:::
+
+```bash
+aws cloudformation describe-stacks \
+  --stack-name <your-deployment-name> \
+  --region $DEPLOYMENT_REGION \
+  --query 'Stacks[0].StackStatus' \
+  --output text
+```
+
+#### B. Verify Nested Stacks
+
+Fundamental uses nested stacks. Ensure all substacks are healthy:
+
+:::info[Note]
+Replace `<your-deployment-name>` with your actual stack name (e.g., `fundamental`).
+:::
+
+```bash
+aws cloudformation describe-stack-resources \
+  --stack-name <your-deployment-name> \
+  --region $DEPLOYMENT_REGION \
+  --query 'StackResources[?ResourceType==`AWS::CloudFormation::Stack`].ResourceStatus' \
+  --output text | tr '\t' '\n' | sort | uniq -c
+```
+
+#### C. Verify EC2 Instances
+
+You should see 3 instances running: `api`, `modelcpu`, and `modelgpu`.
+
+:::info[Note]
+Replace `<your-deployment-name>` with your actual stack name.
+:::
+
+```bash
+aws ec2 describe-instances \
+  --region $DEPLOYMENT_REGION \
+  --filters "Name=tag:DeploymentName,Values=<your-deployment-name>" "Name=instance-state-name,Values=running" \
+  --query 'length(Reservations[*].Instances[*])' \
+  --output text
+```
+
+#### D. Note Stack Outputs
+
+Go to **CloudFormation** → **Stacks** → **** → **Outputs**, or use the CLI:
+
+:::info[Note]
+Replace `<your-deployment-name>` with your actual stack name.
+:::
+
+```bash
+aws cloudformation describe-stacks \
+  --stack-name <your-deployment-name> \
+  --region $DEPLOYMENT_REGION \
+  --query 'Stacks[0].Outputs' \
+  --output table
+```
+
+---
+
+## Part 2: Connect Your Application
+
+To call the Fundamental API from your applications, you need to grant your application IAM permissions to invoke the API.
+
+### Stack Outputs Reference
+
+The deployment provides these outputs for connecting your applications:
+
+| Output | Use Case |
+|--------|----------|
+| `RestApiEndpoint` | The API URL your application calls |
+| `ApiGatewayInvokePolicyArn` | Attach to your existing IAM roles |
+| `ApiGatewayExecuteRoleArn` | Use directly if you don't have existing roles |
+| `ApiGatewayExecuteInstanceProfileArn` | Attach to EC2 instances |
+
+### Grant API Access
+
+Choose the option that fits your use case:
+
+| Option | When to Use | What to Do |
+|--------|-------------|------------|
+| **A. Attach Managed Policy** | Your application already has an IAM role | Attach `ApiGatewayInvokePolicyArn` to your existing role |
+| **B. Use Provided Role** | You don't have an existing role (Lambda, ECS, etc.) | Use `ApiGatewayExecuteRoleArn` directly |
+| **C. Use Instance Profile** | EC2 instances | Attach `ApiGatewayExecuteInstanceProfileArn` when launching |
+
+For a quick test, see [Appendix: Quick Test with EC2](#appendix-quick-test-with-ec2).
+
+---
+
+## Part 3: Tutorial on How to Use the SDK
+
+Now that your Fundamental platform is deployed on AWS and your client instance has the SDK installed, this section guides you through the core workflow: connecting to the platform, training a NEXUS model, and generating predictions.
+
+### 1. Initialization & Authentication
+
+To interact with your private AWS deployment, you must initialize the `FundamentalEC2Client`. You will need the `RestApiEndpoint` (API URL) and your deployment region, which were retrieved in the Stack Outputs in Part 2.
+
+```python
+import fundamental
+from fundamental import FundamentalEC2Client, NEXUSClassifier
+import pandas as pd
+
+# Initialize the client with your specific deployment details
+# Replace with the values from your CloudFormation Stack Outputs
+fundamental.set_client(FundamentalEC2Client(
+    aws_region="us-west-1",
+    api_url="https://<api-id>.execute-api.us-west-1.amazonaws.com/prod"
+))
+
+print("Client initialized successfully!")
+```
+
+### 2. Data Preparation
+
+NEXUS models accept standard Pandas DataFrames. For this "Hello World" example, we will simulate a customer churn dataset.
+
+**Note on Data Requirements:**
+
+- **Numeric Data:** NEXUS requires features to be numeric. Categorical columns (e.g., "City", "Gender") must be encoded (One-Hot or Label encoding) before training.
+- **Cleaning:** Ensure missing values are imputed, though the SDK can handle some basic preprocessing.
+
+```python
+from sklearn.datasets import make_classification
+from sklearn.model_selection import train_test_split
+
+# Generate a synthetic classification dataset (simulating customer churn)
+X, y = make_classification(
+    n_samples=1000,
+    n_features=20,
+    random_state=42
+)
+
+# Split into train and test sets
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
+
+print(f"Training set shape: {X_train.shape}")
+```
+
+### 3. Training the Model (Synchronous)
+
+NEXUS follows the familiar Scikit-Learn API convention (`fit` and `predict`). You can choose between two training modes:
+
+- **`speed`**: Faster training, ideal for prototyping and iterative development.
+- **`quality`**: Longer training time, optimized for the highest accuracy and production benchmarks.
+
+```python
+# Instantiate the classifier
+# Use mode="quality" for production, "speed" for quick tests
+clf = NEXUSClassifier(mode="speed")
+
+print("Starting training...")
+
+# Fit the model (synchronous training)
+# The SDK sends the data to your EC2 Model instances
+clf.fit(X_train, y_train)
+
+print(f"Training Complete! Model ID: {clf.trained_model_id_}")
+```
+
+### 4. Big Data & Async Training
+
+For datasets larger than 100k rows or when training takes longer than 10 minutes, use **Asynchronous Training**. This runs the job in the background, preventing timeouts and allowing you to run multiple experiments in parallel.
+
+```python
+# Start async training
+clf_async = NEXUSClassifier(mode="quality")
+job = clf_async.fit_async(X_train, y_train)
+
+print(f"Job ID: {job.id} | Status: {job.status}")
+
+# Poll for completion
+import time
+while job.status in ["pending", "running"]:
+    job.refresh()
+    print(f"Progress: {job.progress}%")
+    time.sleep(10)
+
+if job.status == "completed":
+    # Link the trained model ID to the classifier instance
+    clf_async.trained_model_id_ = job.model_id
+```
+
+### 5. Inference & Evaluation
+
+Once trained, you can generate predictions or probability estimates immediately.
+
+```python
+# Predict class labels (0 or 1)
+predictions = clf.predict(X_test)
+
+# Get probability estimates (useful for risk scoring)
+probabilities = clf.predict_proba(X_test)
+
+print(f"Predictions: {predictions[:5]}")
+print(f"Probabilities:\n{probabilities[:5]}")
+```
+
+### 6. Model Management (Save & Resume)
+
+Every trained model is assigned a unique `model_id`. You do not need to serialize the model object; simply save the ID to reload the model state later in a different session or environment.
+
+```python
+# Retrieve the ID from a trained estimator
+saved_id = clf.trained_model_id_
+
+# In a new session (e.g., production inference script):
+production_clf = NEXUSClassifier()
+production_clf.trained_model_id_ = saved_id
+
+# Verify it works
+new_preds = production_clf.predict(X_test)
+```
+
+### Summary of SDK Capabilities
+
+- **Regression:** Use `NEXUSRegressor` for continuous targets (workflow is identical).
+- **Model Registry:** Use `client.models.list()` to see all models stored in your private cloud deployment.
+- **Tagging:** Use `client.models.set_attributes()` to add metadata (e.g., version, author, project) to your models for better governance.
+
+---
+
+## Troubleshooting
+
+### Stack creation fails with "Access Denied"
+
+- Ensure you're using an admin user or the CloudFormation service role
+- If using the service role, verify it was created successfully with `./create-role.sh`
+
+### Stack creation fails with IAM errors
+
+- Ensure you included `--capabilities CAPABILITY_NAMED_IAM` in the CLI command
+- Or checked the IAM acknowledgment box in the Console
+
+### Cannot connect to API
+
+- Verify your application's IAM role has the `ApiGatewayInvokePolicyArn` policy attached (or is using the provided role)
+- Ensure your application is running in the VPC/subnets you specified during deployment
+
+---
+
+## Appendix: Quick Test with EC2 {#appendix-quick-test-with-ec2}
+
+This section shows how to create a test EC2 instance and verify the deployment works.
+
+### 1. Get Stack Outputs
+
+```bash
+# Set your stack name
+export STACK_NAME=fundamental
+
+# Get API endpoint
+export API_URL=$(aws cloudformation describe-stacks \
+  --stack-name $STACK_NAME \
+  --region $DEPLOYMENT_REGION \
+  --query 'Stacks[0].Outputs[?OutputKey==`RestApiEndpoint`].OutputValue' \
+  --output text)
+echo "API URL: $API_URL"
+
+# Get instance profile ARN for EC2
+export INSTANCE_PROFILE_ARN=$(aws cloudformation describe-stacks \
+  --stack-name $STACK_NAME \
+  --region $DEPLOYMENT_REGION \
+  --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayExecuteInstanceProfileArn`].OutputValue' \
+  --output text)
+echo "Instance Profile ARN: $INSTANCE_PROFILE_ARN"
+```
+
+### 2. Create SSH Key Pair
+
+```bash
+aws ec2 create-key-pair \
+  --key-name fundamental-test-key \
+  --region $DEPLOYMENT_REGION \
+  --query 'KeyMaterial' \
+  --output text > fundamental-test-key.pem
+
+chmod 400 fundamental-test-key.pem
+```
+
+### 3. Create Client EC2 Instance
+
+Launch an EC2 in your consumer subnet to interact with the API:
+
+:::info[Note]
+Replace `<your-vpc-id>` and `<your-subnet-id>` with your Consumer VPC and subnet IDs.
+:::
+
+```bash
+# Get latest Amazon Linux 2023 AMI
+export AMI_ID=$(aws ssm get-parameter \
+  --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64 \
+  --region $DEPLOYMENT_REGION \
+  --query 'Parameter.Value' \
+  --output text)
+
+# Create security group (replace <your-vpc-id>)
+export CLIENT_SG=$(aws ec2 create-security-group \
+  --region $DEPLOYMENT_REGION \
+  --group-name fundamental-client-sg \
+  --description "Fundamental client access" \
+  --vpc-id <your-vpc-id> \
+  --query 'GroupId' \
+  --output text)
+
+# Note: Replace 0.0.0.0/0 with your CIDR to limit access to the EC2 instances. You can quickly check your
+# local IP by running curl -s checkip.amazonaws.com
+aws ec2 authorize-security-group-ingress \
+  --region $DEPLOYMENT_REGION \
+  --group-id $CLIENT_SG \
+  --protocol tcp \
+  --port 22 \
+  --cidr 0.0.0.0/0
+
+# Launch instance (replace <your-subnet-id>)
+export INSTANCE_ID=$(aws ec2 run-instances \
+  --image-id $AMI_ID \
+  --instance-type t3.large \
+  --subnet-id <your-subnet-id> \
+  --security-group-ids $CLIENT_SG \
+  --iam-instance-profile Arn=$INSTANCE_PROFILE_ARN \
+  --key-name fundamental-test-key \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=fundamental-client}]' \
+  --region $DEPLOYMENT_REGION \
+  --query 'Instances[0].InstanceId' \
+  --output text)
+
+# Wait for instance and get public IP
+aws ec2 wait instance-running --instance-ids $INSTANCE_ID --region $DEPLOYMENT_REGION
+export CLIENT_IP=$(aws ec2 describe-instances \
+  --instance-ids $INSTANCE_ID \
+  --region $DEPLOYMENT_REGION \
+  --query 'Reservations[0].Instances[0].PublicIpAddress' \
+  --output text)
+echo "Client instance IP: $CLIENT_IP"
+```
+
+### 4. SSH into Client Instance
+
+```bash
+ssh -i "fundamental-test-key.pem" ec2-user@$CLIENT_IP
+```
+
+### 5. Install SDK and Run Test
+
+From the client instance:
+
+```bash
+# Install Python and SDK
+sudo dnf update -y && sudo dnf install python3.11 python3.11-pip -y
+pip3.11 install fundamental-client[ec2]
+
+# Create test script (replace DEPLOYMENT_REGION and API_URL with your values)
+cat << EOF > test_fundamental.py
+import numpy as np
+import pandas as pd
+import fundamental
+from fundamental import NEXUSClassifier, FundamentalEC2Client
+
+fundamental.set_client(FundamentalEC2Client(
+    aws_region="${DEPLOYMENT_REGION}",
+    api_url="${API_URL}"
+))
+
+model = NEXUSClassifier(mode="speed")
+
+# Simple test: Input 1 -> Output 0, Input 0 -> Output 1
+model.fit(
+    X=pd.DataFrame(np.array([[1], [0]])),
+    y=pd.Series(np.array([0, 1]))
+)
+print(f"Trained model ID: {model.trained_model_id_}")
+
+preds = model.predict(pd.DataFrame(np.array([[1], [0]])))
+print(f"Predictions: {preds}")
+EOF
+
+# Run the test
+python3.11 test_fundamental.py
+```
+
+**Success Criteria:**
+
+You should see output indicating a `Trained model ID` followed by a prediction array (e.g., `[0, 1]`).

@@ -14,4 +14,4 @@ Infrastructure setup guides for deploying the Fundamental Platform.
 
 | Guide | Description |
 |---|---|
-| [AWS IAM Service Role](setup/aws/iam-service-role/) | Create a CloudFormation service role for deploying the Fundamental Platform stack |
+| [AWS Marketplace](setup/aws/marketplace/) | Deploy the Fundamental Platform via AWS Marketplace |

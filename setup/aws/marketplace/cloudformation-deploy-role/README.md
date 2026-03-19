@@ -15,7 +15,7 @@ When you deploy a CloudFormation stack with a service role (`--role-arn`), Cloud
 ## Files
 
 ```
-iam-service-role/
+cloudformation-deploy-role/
 ├── trust-policy.json              # Trust policy allowing CloudFormation to assume the role
 ├── policies/
 │   ├── 01-cloudformation-s3.json  # CloudFormation + S3 buckets
