@@ -43,13 +43,3 @@ This guide walks customers through updating an existing Fundamental Platform dep
 4. Click **Next** through the remaining screens → Review the changes → Acknowledge any IAM capability warnings if prompted → Click **Submit** / **Update stack**
 
 5. Monitor the stack update progress in the CloudFormation **Events** tab. The update may take several minutes depending on which resources are being changed.
-
----
-
-## Troubleshooting
-
-- If the stack update fails, CloudFormation will automatically roll back to the previous working state. Check the **Events** tab for the specific error.
-
-- If you see a `ROLLBACK_COMPLETE` status, you may need to delete and recreate the stack. Contact Fundamental support before doing this.
-
-- Ensure the region selected in the Marketplace launch page matches the region where your CloudFormation stack is deployed.
