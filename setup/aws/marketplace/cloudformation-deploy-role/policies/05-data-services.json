@@ -91,6 +91,17 @@
       "Resource": "*"
     },
     {
+      "Sid": "CloudWatchDashboards",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:PutDashboard",
+        "cloudwatch:DeleteDashboards",
+        "cloudwatch:GetDashboard",
+        "cloudwatch:ListDashboards"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "CloudWatchLogs",
       "Effect": "Allow",
       "Action": [
