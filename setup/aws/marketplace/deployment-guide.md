@@ -8,6 +8,7 @@
 
 - AWS Account with appropriate permissions
 - AWS CLI installed and configured
+- Active subscription to the **Fundamental Platform** on [AWS Marketplace](https://aws.amazon.com/marketplace). Navigate to the product listing, click **Continue to Subscribe**, and accept the terms. Once the subscription is active, you can proceed with deployment.
 
 #### Networking
 
@@ -18,9 +19,7 @@ You must have:
 - **Consumer VPC ID**: An existing VPC where your client applications will run
 - **Consumer Subnet IDs**: Subnets within that VPC with outbound internet access (to download packages) and connectivity to the Fundamental endpoint
 
-:::warning[Note]
-Ensure you have the full VPC ID (e.g., `vpc-0abc123def456789a`) and Subnet ID (e.g., `subnet-0abc123def456789a`).
-:::
+> **Note:** Ensure you have the full VPC ID (e.g., `vpc-0abc123def456789a`) and Subnet ID (e.g., `subnet-0abc123def456789a`).
 
 #### Compute Capacity
 
@@ -40,9 +39,7 @@ export DEPLOYMENT_REGION=us-west-1
 export FUNDAMENTAL_VERSION=0.1.0
 ```
 
-:::info[Supported Regions]
-`us-west-1`, `us-east-1`
-:::
+> **Supported Regions:** `us-west-1`, `us-east-1`
 
 ### 1. Permissions
 
@@ -123,7 +120,6 @@ Before deploying, collect the following:
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
-| `DeploymentName` | Unique name for this deployment | fundamental |
 | `ConsumerVpc1Id` | VPC ID where your applications will call the API | vpc-0abc123def456 |
 | `ConsumerVpc1SubnetIds` | Comma-separated subnet IDs in that VPC | subnet-111,subnet-222 |
 
@@ -159,95 +155,43 @@ For guaranteed GPU capacity, you can use [EC2 Capacity Blocks](https://docs.aws.
 | `PreferredAvailabilityZone` | The AZ where your Capacity Block is reserved (e.g., `us-west-1a`) |
 | `CapacityReservationId` | Your Capacity Block reservation ID (e.g., `cr-1234567890abcdef0`) |
 
-:::info[Note]
-When using Capacity Blocks, the GPU instances will only launch in the specified Availability Zone. Ensure your Capacity Block is active and has sufficient capacity for your `ModelGpuDesiredCapacity`.
-:::
+> **Note:** When using Capacity Blocks, the GPU instances will only launch in the specified Availability Zone. Ensure your Capacity Block is active and has sufficient capacity for your `ModelGpuDesiredCapacity`.
 
 ### 4. Deploy the Platform
 
-#### Using AWS Console
+The Fundamental Platform is deployed through your AWS Marketplace subscription.
 
-1. Go to **CloudFormation** → **Create stack** → **With new resources**
-2. Select **Amazon S3 URL** and enter:
+1. Go to **AWS Marketplace** → **Manage subscriptions** → select **Fundamental Platform**
+2. Click **Launch CloudFormation stack**
+3. Select your preferred **region** and **version**, then click **Continue to Launch**
+4. Under **Launch action**, choose **Launch CloudFormation**
+5. Click **Launch**
 
-```
-https://fundamental-ec2-cfn-templates.s3.$DEPLOYMENT_REGION.amazonaws.com/$FUNDAMENTAL_VERSION/templates/root-template.yaml
-```
+This opens the CloudFormation console with the template pre-filled. From here:
 
-3. Fill in the parameters from Step 2
-4. If using the service role (Option B), under **Permissions**, select the `FundamentalPlatform-CFServiceRole`
-5. Check the box acknowledging IAM resource creation
-6. Click **Create stack**
-
-#### Using AWS CLI
-
-1. Create a `params.json` file with your configuration:
-
-:::info[Important]
-Replace all `<...>` placeholders with your actual values.
-:::
-
-```json
-[
-  { "ParameterKey": "DeploymentName", "ParameterValue": "<your-deployment-name>" },
-  { "ParameterKey": "ConsumerVpc1Id", "ParameterValue": "<vpc-id>" },
-  { "ParameterKey": "ConsumerVpc1SubnetIds", "ParameterValue": "<subnet-id-1>,<subnet-id-2>" }
-]
-```
-
-**Compute Tiers** (optional):
-
-```json
-  { "ParameterKey": "ApiInstanceType", "ParameterValue": "m7i.4xlarge" },
-  { "ParameterKey": "ModelCpuInstanceType", "ParameterValue": "c7i.48xlarge" },
-  { "ParameterKey": "ModelGpuInstanceType", "ParameterValue": "p5en.48xlarge" }
-```
-
-**Capacity Blocks** (optional):
-
-```json
-  { "ParameterKey": "PreferredAvailabilityZone", "ParameterValue": "${DEPLOYMENT_REGION}a" },
-  { "ParameterKey": "CapacityReservationId", "ParameterValue": "cr-0abc123def456789" }
-```
-
-2. Deploy the stack:
-
-**If you have Admin access (Option A):**
-
-```bash
-aws cloudformation create-stack \
-  --stack-name <your-deployment-name> \
-  --template-url https://fundamental-ec2-cfn-templates.s3.$DEPLOYMENT_REGION.amazonaws.com/$FUNDAMENTAL_VERSION/templates/root-template.yaml \
-  --parameters file://params.json \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --region $DEPLOYMENT_REGION
-```
-
-**If using the service role (Option B):**
-
-```bash
-aws cloudformation create-stack \
-  --stack-name <your-deployment-name> \
-  --template-url https://fundamental-ec2-cfn-templates.s3.$DEPLOYMENT_REGION.amazonaws.com/$FUNDAMENTAL_VERSION/templates/root-template.yaml \
-  --parameters file://params.json \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --role-arn arn:aws:iam::$AWS_ACCOUNT_ID:role/FundamentalPlatform-CFServiceRole \
-  --region $DEPLOYMENT_REGION
-```
+6. Fill in the parameters from Step 2 (VPC, Subnets, etc.)
+7. Customize compute tiers and capacity blocks as needed (see Step 3)
+8. If using the service role (Option B), under **Permissions**, select the `FundamentalPlatform-CFServiceRole`
+9. Check the box acknowledging IAM resource creation
+10. Click **Create stack**
 
 ### 5. Verify Deployment
 
 #### A. Verify Root Stack
 
-Ensure the root stack reports `CREATE_COMPLETE`:
+Ensure the root stack reports `CREATE_COMPLETE`.
 
-:::info[Note]
-Replace `<your-deployment-name>` with your actual stack name (e.g., `fundamental`).
-:::
+**Using AWS Console:**
+
+Go to **CloudFormation** → **Stacks** → select your stack → verify the status shows **CREATE_COMPLETE**.
+
+**Using AWS CLI:**
+
+> **Note:** Replace `<your-stack-name>` with your actual stack name (e.g., `fundamental`).
 
 ```bash
 aws cloudformation describe-stacks \
-  --stack-name <your-deployment-name> \
+  --stack-name <your-stack-name> \
   --region $DEPLOYMENT_REGION \
   --query 'Stacks[0].StackStatus' \
   --output text
@@ -255,15 +199,19 @@ aws cloudformation describe-stacks \
 
 #### B. Verify Nested Stacks
 
-Fundamental uses nested stacks. Ensure all substacks are healthy:
+Fundamental uses nested stacks. Ensure all substacks are healthy.
 
-:::info[Note]
-Replace `<your-deployment-name>` with your actual stack name (e.g., `fundamental`).
-:::
+**Using AWS Console:**
+
+Go to **CloudFormation** → **Stacks** → select your stack → **Resources** tab. All nested stacks (type `AWS::CloudFormation::Stack`) should show **CREATE_COMPLETE**.
+
+**Using AWS CLI:**
+
+> **Note:** Replace `<your-stack-name>` with your actual stack name (e.g., `fundamental`).
 
 ```bash
 aws cloudformation describe-stack-resources \
-  --stack-name <your-deployment-name> \
+  --stack-name <your-stack-name> \
   --region $DEPLOYMENT_REGION \
   --query 'StackResources[?ResourceType==`AWS::CloudFormation::Stack`].ResourceStatus' \
   --output text | tr '\t' '\n' | sort | uniq -c
@@ -273,29 +221,35 @@ aws cloudformation describe-stack-resources \
 
 You should see 3 instances running: `api`, `modelcpu`, and `modelgpu`.
 
-:::info[Note]
-Replace `<your-deployment-name>` with your actual stack name.
-:::
+**Using AWS Console:**
+
+Go to **EC2** → **Instances** → filter by tag `DeploymentName` = your stack name. Verify 3 instances are in the **Running** state.
+
+**Using AWS CLI:**
+
+> **Note:** Replace `<your-stack-name>` with your actual stack name.
 
 ```bash
 aws ec2 describe-instances \
   --region $DEPLOYMENT_REGION \
-  --filters "Name=tag:DeploymentName,Values=<your-deployment-name>" "Name=instance-state-name,Values=running" \
+  --filters "Name=tag:DeploymentName,Values=<your-stack-name>" "Name=instance-state-name,Values=running" \
   --query 'length(Reservations[*].Instances[*])' \
   --output text
 ```
 
 #### D. Note Stack Outputs
 
-Go to **CloudFormation** → **Stacks** → **** → **Outputs**, or use the CLI:
+**Using AWS Console:**
 
-:::info[Note]
-Replace `<your-deployment-name>` with your actual stack name.
-:::
+Go to **CloudFormation** → **Stacks** → select your stack → **Outputs** tab. Note the values listed — you will need these to connect your application.
+
+**Using AWS CLI:**
+
+> **Note:** Replace `<your-stack-name>` with your actual stack name.
 
 ```bash
 aws cloudformation describe-stacks \
-  --stack-name <your-deployment-name> \
+  --stack-name <your-stack-name> \
   --region $DEPLOYMENT_REGION \
   --query 'Stacks[0].Outputs' \
   --output table
@@ -528,9 +482,7 @@ chmod 400 fundamental-test-key.pem
 
 Launch an EC2 in your consumer subnet to interact with the API:
 
-:::info[Note]
-Replace `<your-vpc-id>` and `<your-subnet-id>` with your Consumer VPC and subnet IDs.
-:::
+> **Note:** Replace `<your-vpc-id>` and `<your-subnet-id>` with your Consumer VPC and subnet IDs.
 
 ```bash
 # Get latest Amazon Linux 2023 AMI
