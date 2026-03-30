@@ -283,141 +283,7 @@ Choose the option that fits your use case:
 | **C. Use Instance Profile** | EC2 instances | Attach `ApiGatewayExecuteInstanceProfileArn` when launching |
 
 For a quick test, see [Appendix: Quick Test with EC2](#appendix-quick-test-with-ec2).
-
----
-
-## Part 3: Tutorial on How to Use the SDK
-
-Now that your Fundamental platform is deployed on AWS and your client instance has the SDK installed, this section guides you through the core workflow: connecting to the platform, training a NEXUS model, and generating predictions.
-
-### 1. Initialization & Authentication
-
-To interact with your private AWS deployment, you must initialize the `FundamentalEC2Client`. You will need the `RestApiEndpoint` (API URL) and your deployment region, which were retrieved in the Stack Outputs in Part 2.
-
-```python
-import fundamental
-from fundamental import FundamentalEC2Client, NEXUSClassifier
-import pandas as pd
-
-# Initialize the client with your specific deployment details
-# Replace with the values from your CloudFormation Stack Outputs
-fundamental.set_client(FundamentalEC2Client(
-    aws_region="us-west-1",
-    api_url="https://<api-id>.execute-api.us-west-1.amazonaws.com/prod"
-))
-
-print("Client initialized successfully!")
-```
-
-### 2. Data Preparation
-
-NEXUS models accept standard Pandas DataFrames. For this "Hello World" example, we will simulate a customer churn dataset.
-
-**Note on Data Requirements:**
-
-- **Numeric Data:** NEXUS requires features to be numeric. Categorical columns (e.g., "City", "Gender") must be encoded (One-Hot or Label encoding) before training.
-- **Cleaning:** Ensure missing values are imputed, though the SDK can handle some basic preprocessing.
-
-```python
-from sklearn.datasets import make_classification
-from sklearn.model_selection import train_test_split
-
-# Generate a synthetic classification dataset (simulating customer churn)
-X, y = make_classification(
-    n_samples=1000,
-    n_features=20,
-    random_state=42
-)
-
-# Split into train and test sets
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
-)
-
-print(f"Training set shape: {X_train.shape}")
-```
-
-### 3. Training the Model (Synchronous)
-
-NEXUS follows the familiar Scikit-Learn API convention (`fit` and `predict`). You can choose between two training modes:
-
-- **`speed`**: Faster training, ideal for prototyping and iterative development.
-- **`quality`**: Longer training time, optimized for the highest accuracy and production benchmarks.
-
-```python
-# Instantiate the classifier
-# Use mode="quality" for production, "speed" for quick tests
-clf = NEXUSClassifier(mode="speed")
-
-print("Starting training...")
-
-# Fit the model (synchronous training)
-# The SDK sends the data to your EC2 Model instances
-clf.fit(X_train, y_train)
-
-print(f"Training Complete! Model ID: {clf.trained_model_id_}")
-```
-
-### 4. Big Data & Async Training
-
-For datasets larger than 100k rows or when training takes longer than 10 minutes, use **Asynchronous Training**. This runs the job in the background, preventing timeouts and allowing you to run multiple experiments in parallel.
-
-```python
-# Start async training
-clf_async = NEXUSClassifier(mode="quality")
-job = clf_async.fit_async(X_train, y_train)
-
-print(f"Job ID: {job.id} | Status: {job.status}")
-
-# Poll for completion
-import time
-while job.status in ["pending", "running"]:
-    job.refresh()
-    print(f"Progress: {job.progress}%")
-    time.sleep(10)
-
-if job.status == "completed":
-    # Link the trained model ID to the classifier instance
-    clf_async.trained_model_id_ = job.model_id
-```
-
-### 5. Inference & Evaluation
-
-Once trained, you can generate predictions or probability estimates immediately.
-
-```python
-# Predict class labels (0 or 1)
-predictions = clf.predict(X_test)
-
-# Get probability estimates (useful for risk scoring)
-probabilities = clf.predict_proba(X_test)
-
-print(f"Predictions: {predictions[:5]}")
-print(f"Probabilities:\n{probabilities[:5]}")
-```
-
-### 6. Model Management (Save & Resume)
-
-Every trained model is assigned a unique `model_id`. You do not need to serialize the model object; simply save the ID to reload the model state later in a different session or environment.
-
-```python
-# Retrieve the ID from a trained estimator
-saved_id = clf.trained_model_id_
-
-# In a new session (e.g., production inference script):
-production_clf = NEXUSClassifier()
-production_clf.trained_model_id_ = saved_id
-
-# Verify it works
-new_preds = production_clf.predict(X_test)
-```
-
-### Summary of SDK Capabilities
-
-- **Regression:** Use `NEXUSRegressor` for continuous targets (workflow is identical).
-- **Model Registry:** Use `client.models.list()` to see all models stored in your private cloud deployment.
-- **Tagging:** Use `client.models.set_attributes()` to add metadata (e.g., version, author, project) to your models for better governance.
-
+ 
 ---
 
 ## Troubleshooting
@@ -439,7 +305,7 @@ new_preds = production_clf.predict(X_test)
 
 ---
 
-## Appendix: Quick Test with EC2 {#appendix-quick-test-with-ec2}
+## Appendix: Quick Test with EC2
 
 This section shows how to create a test EC2 instance and verify the deployment works.
 
@@ -546,16 +412,16 @@ From the client instance:
 ```bash
 # Install Python and SDK
 sudo dnf update -y && sudo dnf install python3.11 python3.11-pip -y
-pip3.11 install fundamental-client[ec2]
+pip3.11 install fundamental-client[aws-marketplace]
 
 # Create test script (replace DEPLOYMENT_REGION and API_URL with your values)
 cat << EOF > test_fundamental.py
 import numpy as np
 import pandas as pd
 import fundamental
-from fundamental import NEXUSClassifier, FundamentalEC2Client
+from fundamental import NEXUSClassifier, FundamentalAWSMarketplaceClient
 
-fundamental.set_client(FundamentalEC2Client(
+fundamental.set_client(FundamentalAWSMarketplaceClient(
     aws_region="${DEPLOYMENT_REGION}",
     api_url="${API_URL}"
 ))
