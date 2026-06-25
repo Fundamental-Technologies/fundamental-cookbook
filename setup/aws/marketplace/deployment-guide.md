@@ -109,7 +109,7 @@ You do **not** host images, supply registry credentials, or run any manual image
 
 **How it works (automatic - this is the default):**
 
-- Fundamental publishes a single **offline image bundle** (all images + Helm charts) and a small `crane` binary to an S3 bucket your account is granted read access to.
+- Fundamental publishes a single **offline image bundle** (all images + Helm charts), a small `crane` binary, and a `manifest.json` to an S3 bucket your account is granted read access to, all under a `<FunBundleVersion>/` prefix. The `FunBundleVersion` parameter selects which release to deploy; the stack derives the bundle and crane keys from it and reads the chart and image versions from the manifest.
 - A native **image-importer Lambda** - created by the stack and running inside the platform VPC - downloads the bundle, creates the ECR repositories in your account, and pushes every image: the Fundamental charts (CRDs, infrastructure, application), the helm-deployer image, and all third-party dependencies (Temporal, database operator, ingress, load-balancer controller, monitoring).
 - It runs **before** the rest of the platform, so by the time the Kubernetes workloads start, every image already exists in your ECR. The helm-deployer Lambda and the EKS nodes then pull from your own registry.
 
@@ -117,9 +117,10 @@ Nothing leaves AWS: the bundle download and the image pushes stay inside AWS ove
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
+| `FunBundleVersion` | The single knob that selects the release. The stack derives the offline bundle and crane binary S3 keys from it and reads the chart and helm-deployer image versions from the bundle's `manifest.json`. Pre-filled for this version; you change it only on an upgrade, using the version string Fundamental provides. | *(version-pinned)* |
+| `BundleS3Bucket` | S3 bucket holding the bundle, crane binary, and `manifest.json`. Defaults to the shared bundle bucket your account is granted read access to. | *(shared bundle bucket)* |
 | `ImageRegistryUri` | ECR prefix the platform pulls from. Leave empty to use your own account's registry (`<account>.dkr.ecr.<region>.amazonaws.com/fundamental`), which the importer populates. | *(empty)* |
 | `SkipImageImport` | Leave `false` for the automatic import. Set `true` only if you have loaded the bundle into your ECR yourself (see the optional pre-scan path below). | `false` |
-| `BundleS3Key` / `CraneS3Key` | S3 keys of the bundle and crane binary. Pre-filled for this version; you change them only on an upgrade, using the values Fundamental provides. | *(version-pinned)* |
 
 **Optional - pre-scan the images first.** If your security process requires scanning every image before it reaches your cluster, ask Fundamental for the bundle, load it into your ECR yourself with the included loader, then deploy with `SkipImageImport=true`. The stack then skips the importer and uses the images you already loaded. See the [Image Bundle Guide](./image-bundle-guide.md).
 
@@ -263,8 +264,9 @@ The platform includes a **private, fully managed EKS cluster** that runs its Kub
 | `EnableEksHeavyNodeGroup` | Run one additional EKS node for heavier workloads. Enabled by default; turn off if you do not need the extra capacity (check with Fundamental first). | `true` |
 | `EksHeavyNodeInstanceType` | Instance type for the additional node | `m7i.4xlarge` |
 | `EksHeavyNodeDesiredCapacity` / `EksHeavyNodeMinCapacity` / `EksHeavyNodeMaxCapacity` | Auto Scaling bounds for the additional node | `1` |
-| `EksKubernetesVersion` | EKS control-plane version | `1.33` |
 | `EksAdminRoleArn` | *(Optional)* ARN of an IAM role to grant `kubectl` (cluster-admin) access. Leave empty if you don't need direct cluster access. | *(empty)* |
+
+> The EKS control-plane version is fixed internally (currently **1.36**) and is not a customer-settable parameter.
 
 > **Note:** Because the cluster endpoint is private, any `kubectl` access (when `EksAdminRoleArn` is set) must originate from inside the deployment VPC. Direct cluster access is **not** required to use the platform.
 

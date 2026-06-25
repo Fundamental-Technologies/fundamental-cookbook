@@ -71,24 +71,24 @@ This is the complete reference for the CloudFormation parameters used to deploy 
 | `EnableEksHeavyNodeGroup` | `true` | Runs one additional EKS node for heavier workloads, on top of the worker nodes. Enabled by default; set `false` to drop it if you do not need the extra capacity (check with Fundamental first). |
 | `EksHeavyNodeInstanceType` | `m7i.4xlarge` | Instance type for the additional node. Allowed: `m7i.4xlarge`, `m7i.8xlarge`, `r7i.2xlarge`, `r7i.4xlarge`. |
 | `EksHeavyNodeDesiredCapacity` / `EksHeavyNodeMinCapacity` / `EksHeavyNodeMaxCapacity` | `1` / `1` / `1` | Auto Scaling bounds for the additional node. |
-| `EksKubernetesVersion` | `1.33` | Control‑plane version. |
 | `PrivateEksClusterEndpoint` | `true` | Private‑only API endpoint. |
 | `EksServiceIpv4Cidr` | `172.21.0.0/16` | Kubernetes service CIDR. |
 | `EksNodeAmiId` | *(empty)* | Optional override; empty uses the EKS‑optimized AMI. |
 
 ---
 
-## Images & version (pre‑filled — change only on an upgrade)
+## Images & version
 
-These are version‑pinned in each release. The Console Launch page fills them in for you; in `params.json` you can omit them to take the template defaults.
+A single parameter, `FunBundleVersion`, selects the released version of everything. The Console Launch page pre‑fills it for the version you pick; for a CLI deploy you set it to the released version string Fundamental gives you.
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
+| `FunBundleVersion` | version‑pinned | The one knob that selects the release. Everything about **what** runs is resolved from this single value: the offline image bundle, the crane binary, the umbrella chart versions (CRD, infrastructure, application), and the helm‑deployer image. The stack derives the bundle and crane S3 keys from it (`<FunBundleVersion>/fundamental-marketplace-<FunBundleVersion>.tar.gz` and `<FunBundleVersion>/crane-linux-arm64`) and reads the chart versions and helm‑deployer image details from the bundle's `manifest.json` (`s3://<bundle-bucket>/<FunBundleVersion>/manifest.json`) at deploy time. To move to a new release, change only this value (see the [Upgrade Guide](./update-guide.md)). |
+| `BundleS3Bucket` | *(shared bundle bucket)* | S3 bucket holding the offline bundle, crane binary, and `manifest.json`. Defaults to the shared bundle bucket Fundamental grants your account read access to; override only if Fundamental tells you to. |
 | `ImageRegistryUri` | *(empty)* | Empty = the importer loads images into **your own** ECR (`<account>.dkr.ecr.<region>.amazonaws.com/fundamental`) and the platform pulls from there. |
 | `SkipImageImport` | `false` | `false` = automatic import (default). `true` only if you loaded the bundle into your ECR yourself first (pre‑scan path — see the Image Bundle Guide). |
-| `BundleS3Key` / `CraneS3Key` | version‑pinned | Offline bundle + crane binary S3 keys. Bump on an upgrade to ship new app/chart versions without changing template code. |
-| `FunCrdChartVersion` / `FunInfraChartVersion` / `FunAppChartVersion` | `1.1.0` / `1.3.3` / `1.2.0` | Umbrella chart versions. Match the bundle. |
-| `HelmDeployerImageTag` | `1.2.2-arm64` | helm‑deployer Lambda image tag (tracks the bundle). |
+
+> The chart versions and helm‑deployer image are no longer separate parameters. They live in the bundle's `manifest.json`, so a given `FunBundleVersion` always pins a self‑consistent set. The Kubernetes control‑plane version is also fixed internally (currently **1.36**) and is not a customer‑settable parameter.
 
 ---
 
@@ -118,7 +118,7 @@ A minimal 0‑to‑1 file — fill the four required values (and `DeploymentName
 ]
 ```
 
-> To also customize compute/EKS, add the relevant rows from the tables above (e.g. `EksNodeInstanceType`, `ModelGpuInstanceType`, `CapacityReservationId`). Do **not** add `BundleS3Key`/`CraneS3Key`/chart‑version rows unless Fundamental tells you to — the template defaults are correct for this version.
+> To also customize compute/EKS, add the relevant rows from the tables above (e.g. `EksNodeInstanceType`, `ModelGpuInstanceType`, `CapacityReservationId`). You normally do **not** set `FunBundleVersion` on a fresh deploy; the template default pins the correct release. Add it (and only it) when Fundamental gives you a new version to upgrade to.
 
 ### Deploy command
 
