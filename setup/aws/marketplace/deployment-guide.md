@@ -351,6 +351,24 @@ aws cloudformation describe-stacks \
   --output table
 ```
 
+### 6. First Login
+
+The platform UI runs on the private hosted zone the stack creates. It resolves inside the platform VPC and your consumer VPCs, and is not reachable from the internet.
+
+Get the portal address from the stack outputs:
+
+```bash
+aws cloudformation describe-stacks \
+  --stack-name <your-stack-name> \
+  --region $DEPLOYMENT_REGION \
+  --query 'Stacks[0].Outputs[?OutputKey==`PlatformPortalHostName`].OutputValue' \
+  --output text
+```
+
+From a host in your consumer VPC, open `https://<PlatformPortalHostName>` and sign in as `admin` with the password `admin`. You are asked to set a new password immediately; the initial one is temporary and stops working once you change it.
+
+Use the portal to create API keys and invite the rest of your team.
+
 ---
 
 ## Part 2: Connect Your Application
