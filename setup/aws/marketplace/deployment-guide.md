@@ -28,6 +28,14 @@ You must supply:
 
 > **Note:** The consumer subnet does not require a NAT gateway or internet gateway. API traffic stays on the AWS network through the VPC endpoint.
 
+#### TLS Certificate and DNS
+
+The platform is reached over HTTPS on hostnames under a domain you own. The stack does not issue certificates or create hosted zones. Before deploying, have ready:
+
+- **Base domain**: a domain you control, for example `ml.example.com`. The four platform hostnames are created under it (see [Step 3](#3-tls-certificate-and-dns)).
+- **ACM certificate** in the deployment region covering those hostnames: a wildcard `*.<BaseDomain>` or a SAN certificate listing all four. A public certificate with DNS validation works even though the endpoints are private. A certificate from AWS Private CA also works if your clients trust that CA.
+- **Private Route 53 hosted zone** for the base domain, associated with your consumer VPC. Only needed if you want the stack to create the DNS records for you.
+
 ### Networking
 
 #### Platform VPC (created automatically by the stack)
@@ -177,11 +185,40 @@ Collect these values before launching the stack:
 | `CloudFormationExecutionRoleArn` | IAM role CloudFormation runs as (also granted EKS cluster-admin to bootstrap access entries) | `arn:aws:iam::123456789012:role/FundamentalPlatform-CFServiceRole` | The service-role ARN from `create-role.sh` (pass the same ARN as `--role-arn`). Keep it **different** from `EksAdminRoleArn`. |
 | `ConsumerVpc1Id` | VPC where your applications call the API | `vpc-0abc123def456` | At least one Consumer VPC is required - see [Networking](#networking). |
 | `ConsumerVpc1SubnetIds` | Comma-separated subnet IDs in that VPC | `subnet-111,subnet-222` | |
+| `CustomCertificateArn` | ACM certificate for the platform hostnames | `arn:aws:acm:us-west-1:123456789012:certificate/abcd1234-...` | Required. Must be in the deployment region - see [Step 3](#3-tls-certificate-and-dns). |
+| `BaseDomain` | Domain under which the platform hostnames are created | `ml.example.com` | See [Step 3](#3-tls-certificate-and-dns). |
 | `DeploymentName` | Name prefix for resources/buckets (default `fundamental`) | `fundamental` | **Max 19 characters** (it is embedded in S3 bucket names bound by the 63-char limit). |
 
 For every parameter and a ready-to-edit `params.json`, see the [Parameters Reference](./parameters-reference.md).
 
-### 3. Stack Configuration (Optional)
+### 3. TLS Certificate and DNS
+
+The platform exposes four hostnames under your base domain. All of them resolve to one private endpoint, and TLS terminates there using your ACM certificate.
+
+| Hostname | Used by |
+|----------|---------|
+| `fundamental-api.<BaseDomain>` | Your applications and the SDK |
+| `fundamental-portal.<BaseDomain>` | Platform UI |
+| `fundamental-keycloak.<BaseDomain>` | Sign-in (OIDC) |
+| `fundamental-grafana.<BaseDomain>` | Monitoring dashboards |
+
+#### A. Request the certificate
+
+In **ACM**, in the deployment region, request a public certificate for `*.<BaseDomain>` (or import one). Validate it with the DNS record ACM gives you, then copy the certificate ARN into `CustomCertificateArn`. Stack creation fails at validation if this parameter is missing.
+
+#### B. Choose how DNS records are created
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `CreateRecords` | `true`: the stack creates the four CNAME records. `false`: you create them from the stack outputs after deployment. | `false` |
+| `ConsumerVpc1HostedZoneId` | Private hosted zone associated with Consumer VPC 1, where the records are created. One per consumer VPC (`ConsumerVpc2HostedZoneId`, ...). Used when `CreateRecords=true`. | *(empty)* |
+| `PlatformHostedZoneId` | Only when your clients run inside the platform VPC itself (existing-VPC deployments). Private hosted zone associated with that VPC. Used when `CreateRecords=true`. | *(empty)* |
+
+**Stack-managed records (recommended):** create a private hosted zone for `<BaseDomain>` in Route 53, associate it with your consumer VPC, and pass its ID as `ConsumerVpc1HostedZoneId` with `CreateRecords=true`.
+
+**Manual records:** leave `CreateRecords=false`. After the stack completes, create a CNAME for each hostname in a private zone your clients resolve. For a consumer VPC, point them at the `ApiEndpointDnsName` output of the `ConsumerVpc1EndpointStack` nested stack. For clients inside the platform VPC, point them at the `PlatformNlbDnsName` root stack output.
+
+### 4. Stack Configuration (Optional)
 
 The defaults are suitable for a standard deployment. Change these only when you need different capacity, versions, or access settings.
 
@@ -235,7 +272,7 @@ For guaranteed GPU capacity, you can use [EC2 Capacity Blocks](https://docs.aws.
 
 The stack creates a private EKS cluster for Kubernetes application workloads. Most deployments do not need to change the EKS settings. See the [Parameters Reference](./parameters-reference.md#eks) for the full EKS parameter list, including optional `kubectl` access through `EksAdminRoleArn`.
 
-### 4. Deploy the Platform
+### 5. Deploy the Platform
 
 Deploy the platform from your AWS Marketplace subscription.
 
@@ -248,10 +285,11 @@ Deploy the platform from your AWS Marketplace subscription.
 This opens the CloudFormation console with the template pre-filled:
 
 6. Fill in the parameters from Step 2
-7. Customize compute tiers and capacity blocks as needed (see Step 3)
-8. Under **Permissions**, select the `FundamentalPlatform-CFServiceRole` (created in Step 1)
-9. Check the box acknowledging IAM resource creation
-10. Click **Create stack**
+7. Set the TLS and DNS parameters (see Step 3)
+8. Customize compute tiers and capacity blocks as needed (see Step 4)
+9. Under **Permissions**, select the `FundamentalPlatform-CFServiceRole` (created in Step 1)
+10. Check the box acknowledging IAM resource creation
+11. Click **Create stack**
 
 #### Alternative: Deploy via the AWS CLI (`params.json`)
 
@@ -271,7 +309,7 @@ Set `CloudFormationExecutionRoleArn` in `params.json` to the same service-role A
 
 > **Deployment time:** the stack takes roughly **45 minutes** to reach `CREATE_COMPLETE`. The private EKS cluster, image import, and Helm install run sequentially.
 
-### 5. Verify Deployment
+### 6. Verify Deployment
 
 #### A. Verify Root Stack
 
@@ -351,9 +389,9 @@ aws cloudformation describe-stacks \
   --output table
 ```
 
-### 6. First Login
+### 7. First Login
 
-The platform UI runs on the private hosted zone the stack creates. It resolves inside the platform VPC and your consumer VPCs, and is not reachable from the internet.
+The platform UI is served at `fundamental-portal.<BaseDomain>`. It resolves only through the private DNS records from Step 3 and is not reachable from the internet.
 
 Get the portal address from the stack outputs:
 
@@ -416,6 +454,7 @@ For a quick test, see [Appendix: Quick Test](#appendix-quick-test).
 
 - Verify your application's IAM role has the `ApiGatewayInvokePolicyArn` policy attached (or is using the provided role)
 - Ensure your application is running in the VPC/subnets you specified during deployment
+- Check that `fundamental-api.<BaseDomain>` resolves from the client. With `CreateRecords=false`, the CNAME records from Step 3 must be created by you
 
 ---
 
