@@ -9,9 +9,15 @@ Read this part once and gather what it asks for. Nothing here changes your subsc
 #### Azure Subscription
 
 - An Azure subscription and a **resource group** in the region where you want the platform. An existing resource group works. If you do not have one, Step 1 creates it.
-- The identity running the deployment must have the **Owner** role on that resource group.
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) installed and signed in.
-- Permission in **Microsoft Entra** to create app registrations. You need this once, during identity onboarding ([Step 1](#1-identity-onboarding-one-time)).
+- The permissions below. Two different people or identities can hold them.
+
+| Who | Needs | Why |
+|---|---|---|
+| The person running identity onboarding ([Step 1](#1-identity-onboarding-one-time)) | **Owner** on the resource group | To create the managed identity and grant the deployment identity its role. |
+| | **Application Developer** role in Microsoft Entra | To create the two app registrations and their credentials. |
+| The identity running the deployment ([Step 4](#4-deploy-the-platform)) | **Owner** on the resource group | The deployment creates role assignments. |
+| | **Owner** on the certificate Key Vault | Only when you enable HTTPS. The deployment grants the platform read access to the certificate. |
 
 
 > **Note:** The deployment is a standard Azure Resource Manager (ARM) deployment into your own subscription. Fundamental never has access to your subscription.
@@ -45,8 +51,6 @@ The platform is reached on four hostnames under a domain you own. The deployment
   - cover `*.<userDomain>` or list all four hostnames,
   - have an exportable private key (PKCS#8),
   - live in a Key Vault that uses **Azure RBAC** permissions and is in the same tenant as the deployment.
-
-  The identity running the deployment needs **Owner** on that Key Vault so the deployment can grant the platform read access to the certificate.
 
 #### Compute Capacity
 
