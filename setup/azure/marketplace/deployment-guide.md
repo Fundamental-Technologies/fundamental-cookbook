@@ -9,6 +9,7 @@ Read this part once and gather what it asks for. Nothing here changes your subsc
 #### Azure Subscription
 
 - An Azure subscription and a **resource group** in the region where you want the platform. An existing resource group works. If you do not have one, Step 1 creates it.
+- The **Azure region** you will deploy into, decided up front. Fundamental replicates the platform machine image to that region before you deploy, so you share it during identity onboarding ([Step 1D](#d-share-the-application-ids-and-region-with-fundamental)).
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) installed and signed in.
 - The permissions below. Two different people or identities can hold them.
 
@@ -162,15 +163,16 @@ Add a client secret, certificate or federated credential in the way your organiz
 
 > **Note:** If you already have a multi-tenant deployment identity, reuse it and skip this step. Just make sure it has Owner on the resource group.
 
-#### D. Share the two application IDs with Fundamental
+#### D. Share the application IDs and region with Fundamental
 
 ```bash
 echo "Platform access app ID: $SKR_APP_CLIENT_ID"
 echo "Deployment app ID:      $DEPLOY_APP_CLIENT_ID"
+echo "Region:                 $LOCATION"
 ```
 
 > [!IMPORTANT]
-> Send both IDs to your Fundamental contact and **wait for Fundamental to confirm** before you deploy. Fundamental will then send back the values you need for [Step 2](#2-required-information).
+> Send both IDs and the region to your Fundamental contact and **wait for Fundamental to confirm** before you deploy. Fundamental will then send back the values you need for [Step 2](#2-required-information).
 
 ---
 
@@ -183,6 +185,7 @@ Collect these values before deploying.
 | `deploymentName` | Prefix for all resource names | `fundamental` | 2 to 12 chars, lowercase letters, digits, hyphens. Same value you used in Step 1. |
 | `computeImageId` | Resource ID of the platform machine image | `/subscriptions/.../versions/2026.09.1` | Provided by Fundamental |
 | `Fundamental tenant ID` | Used only on the deploy command | `<fundamental-tenant-id>` | Provided by Fundamental |
+| `Region` | Region of the resource group you deploy into | `eastus2` | The region you shared in Step 1D. |
 | `infraBundleVersion` | Platform bundle version | `1.7.0` | From Fundamental's release notes |
 | `appBundleVersion` | Application bundle version | `1.7.0` | From Fundamental's release notes |
 | `aksAdminGroupObjectIds` | Entra group that gets cluster admin | `["2f1c...-..."]` | Object ID of the group from the prerequisites |
