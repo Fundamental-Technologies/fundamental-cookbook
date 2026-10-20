@@ -25,7 +25,7 @@ The deploying identity is missing **Owner** on the resource group, or Owner on t
 
 One of three causes:
 
-- The `--aux-tenants` flag is missing from the deploy command. Check Step 4A.
+- The `--aux-tenants` flag is missing from the deploy command. Check Step 4B.
 - Fundamental has not yet granted your deployment app access to the machine image. Check Step 1D.
 - The machine image is not replicated to your region. This happens when you deploy into a region other than the one you shared in Step 1D. The error names the region and the image version. Send both to your Fundamental contact and wait for confirmation that the image is replicated before you redeploy.
 

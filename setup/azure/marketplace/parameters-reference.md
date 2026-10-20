@@ -161,7 +161,13 @@ Requirements for each group you supply:
 
 ## `params.json` template (CLI deploy)
 
-Fill the eight required values. Everything else uses the template default. Remove the optional rows you do not need.
+Start from [`params.example.json`](./params.example.json). It holds only the eight required values:
+
+```bash
+cp params.example.json params.json
+```
+
+Fill the eight required values. Everything else uses the template default. The longer version below also shows the most common optional rows. Remove the optional rows you do not need.
 
 ```json
 {

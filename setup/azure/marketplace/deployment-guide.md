@@ -194,7 +194,7 @@ Collect these values before deploying.
 | `skrAppClientId` | Platform access app client ID from Step 1B | `9d3a...-...` | `$SKR_APP_CLIENT_ID` |
 
 
-The full parameter list, including every optional setting and a ready-to-edit `params.json`, is in the [Parameters Reference](./parameters-reference.md).
+Copy [`params.example.json`](./params.example.json) to `params.json` and fill in these values. The full parameter list, including every optional setting, is in the [Parameters Reference](./parameters-reference.md).
 
 ---
 
@@ -217,7 +217,19 @@ The defaults give you one CPU, one GPU and one orchestration machine, a 3 to 6 n
 
 ### 4. Deploy the Platform
 
-#### A. Deploy with the Azure CLI
+#### A. Check the prerequisites
+
+Run the prerequisite check before you deploy. It is read-only and takes about two minutes:
+
+```bash
+./preflight.sh -g "$RG" -p params.json
+```
+
+It checks the resource group, region, resource providers, identities from Step 1, the Entra group, VM size availability, quota and the TLS certificate. Fix every `FAIL` before you continue. A `SKIP` means your account lacks the permission to run that check; ask an Owner of the resource group to run the script, or verify the item yourself.
+
+If you reuse a deployment identity with another name, add `--deploy-app-id <client-id>`. Run `./preflight.sh -h` for all options.
+
+#### B. Deploy with the Azure CLI
 
 Fundamental provides the template file `mainTemplate.json` with each release. Put it next to your `params.json` ([template here](./parameters-reference.md#paramsjson-template-cli-deploy)).
 
