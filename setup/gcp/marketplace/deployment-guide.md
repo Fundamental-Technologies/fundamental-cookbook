@@ -62,7 +62,7 @@ The platform runs its model workloads on managed instance groups of Shielded VMs
 | Model GPU (`modelgpu`) | `a3-ultragpu-8g` | 224 | 8x NVIDIA H200 | `CPUS` plus the H200 GPU quota |
 | Model GPU, smaller alternative | `g4-standard-48` (or `-96`, `-192`, `-384`) | 48 | 1x NVIDIA RTX PRO 6000 (2, 4, 8) | `CPUS` plus the RTX PRO 6000 GPU quota |
 | Orchestration (`temporal_worker`) | `n2-highmem-32` | 32 | | `N2_CPUS`, `CPUS` |
-| GKE platform node pool | `e2-standard-4`, 1 node per zone at start, up to 64 per zone | 4 per node | | `E2_CPUS`, `CPUS` |
+| GKE platform node pool | `n2-standard-16`, 1 node per zone at start, up to 64 per zone | 16 per node | | `N2_CPUS`, `CPUS` |
 
 <!-- TODO: the quota metric names for H200 (a3-ultragpu) and RTX PRO 6000 (g4) could not be verified with gcloud; neither appears in `gcloud compute regions describe` even in a region that offers G4. Fill in once confirmed in the Console quota page. -->
 

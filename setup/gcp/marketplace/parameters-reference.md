@@ -63,7 +63,7 @@ Deploy into a VPC you already own instead of creating one. All values are self-l
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
-| `gke_node_machine_types` | list(string) | `["e2-standard-4"]` | Machine types for the platform node pools, one pool each, in order of preference. The first keeps `gke_min_node_count_per_zone`; the others start at zero and grow when an earlier type is out of capacity in a zone. |
+| `gke_node_machine_types` | list(string) | `["n2-standard-16"]` | Machine types for the platform node pools, one pool each, in order of preference. The first keeps `gke_min_node_count_per_zone`; the others start at zero and grow when an earlier type is out of capacity in a zone. |
 | `gke_node_disk_size_gb` | number | `100` | Boot disk size (GB) for GKE platform nodes. |
 | `gke_min_node_count_per_zone` | number | `1` | Minimum nodes per zone in the platform node pool; also its start size per zone. Keep it at least 1 with customer exposure: the edge needs a node in every zone. |
 | `gke_max_node_count_per_zone` | number | `64` | Maximum nodes per zone in the platform node pool (autoscaler ceiling; mutable in place). |
@@ -189,7 +189,7 @@ gke_master_authorized_cidrs = { private-rfc1918 = "10.0.0.0/8" }
 # }
 
 # ---------------------------------------------------------------------- gke --
-gke_node_machine_types      = ["e2-standard-4"]
+gke_node_machine_types      = ["n2-standard-16"]
 gke_node_disk_size_gb       = 100
 gke_min_node_count_per_zone = 1
 gke_max_node_count_per_zone = 64

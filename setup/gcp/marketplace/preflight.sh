@@ -486,7 +486,7 @@ if [ "$TW_SIZE" != "0" ]; then
 else
   info "temporal_worker.target_size = 0: the tier is disabled."
 fi
-GKE_TYPES=$(tv gke_node_machine_types e2-standard-4)
+GKE_TYPES=$(tv gke_node_machine_types n2-standard-16)
 GKE_MIN=$(tv gke_min_node_count_per_zone 1)
 GKE_MAX=$(tv gke_max_node_count_per_zone 64)
 ZONE_COUNT=$(printf '%s\n' "$ZONES" | wc -w | tr -d ' ')
