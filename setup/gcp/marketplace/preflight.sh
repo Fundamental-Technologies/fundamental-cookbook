@@ -468,10 +468,10 @@ if [ "$GPU_LAYOUT" = "split" ] && [ "$CPU_LAYOUT" != "split" ]; then
 fi
 if [ "$CPU_LAYOUT" = "split" ]; then
   for t in modelcpu-train modelcpu-predict; do
-    add_tier "$t" "$(tier_val $t machine_type modelcpu e2-standard-4)" "$(tier_val $t target_size modelcpu 1)" "$REGION" "$(tier_val $t zones modelcpu "$ZONES")" "$(tier_val $t spot modelcpu false)"
+    add_tier "$t" "$(tier_val $t machine_type modelcpu n2-standard-32)" "$(tier_val $t target_size modelcpu 1)" "$REGION" "$(tier_val $t zones modelcpu "$ZONES")" "$(tier_val $t spot modelcpu false)"
   done
 else
-  add_tier "modelcpu" "$(tv modelcpu.machine_type e2-standard-4)" "$(tv modelcpu.target_size 1)" "$REGION" "$(tv modelcpu.zones "$ZONES")" "$(tv modelcpu.spot false)"
+  add_tier "modelcpu" "$(tv modelcpu.machine_type n2-standard-32)" "$(tv modelcpu.target_size 1)" "$REGION" "$(tv modelcpu.zones "$ZONES")" "$(tv modelcpu.spot false)"
 fi
 if [ "$GPU_LAYOUT" = "split" ]; then
   for t in modelgpu-train modelgpu-predict; do
@@ -482,7 +482,7 @@ else
 fi
 TW_SIZE=$(tv temporal_worker.target_size 1)
 if [ "$TW_SIZE" != "0" ]; then
-  add_tier "temporal-worker" "$(tv temporal_worker.machine_type e2-standard-8)" "$TW_SIZE" "$REGION" "$(tv temporal_worker.zones "$ZONES")" "$(tv temporal_worker.spot false)"
+  add_tier "temporal-worker" "$(tv temporal_worker.machine_type n2-highmem-32)" "$TW_SIZE" "$REGION" "$(tv temporal_worker.zones "$ZONES")" "$(tv temporal_worker.spot false)"
 else
   info "temporal_worker.target_size = 0: the tier is disabled."
 fi

@@ -86,7 +86,7 @@ Keys of each object:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `machine_type` | string | `"e2-standard-4"` (modelcpu), `"a3-ultragpu-8g"` (modelgpu), `"e2-standard-8"` (temporal_worker) | Machine type of the tier's instances. |
+| `machine_type` | string | `"n2-standard-32"` (modelcpu), `"a3-ultragpu-8g"` (modelgpu), `"n2-highmem-32"` (temporal_worker) | Machine type of the tier's instances. |
 | `zones` | list(string) | `zones` | Zones the instance group spreads over. With `modelgpu.region` set, `modelgpu.zones` is required and must lie in that region. |
 | `spot` | bool | `false` | Run the tier on Spot VMs. |
 | `disk_type` | string | `"pd-balanced"` (CPU tiers), `"hyperdisk-balanced"` (GPU tier) | Boot disk type. A3 Ultra and G4 require Hyperdisk; A2 (A100) requires Persistent Disk, so set `"pd-balanced"` for an A2 shape. |
@@ -198,7 +198,7 @@ gke_deletion_protection     = false
 
 # ------------------------------------------------------------- sealed tiers --
 modelcpu = {
-  machine_type = "e2-standard-4"
+  machine_type = "n2-standard-32"
   disk_size_gb = 40
   target_size  = 1
 }
@@ -209,7 +209,7 @@ modelgpu = {
   target_size  = 1
 }
 temporal_worker = {
-  machine_type = "e2-standard-8"
+  machine_type = "n2-highmem-32"
   target_size  = 1
 }
 

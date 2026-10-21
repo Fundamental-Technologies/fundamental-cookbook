@@ -58,10 +58,10 @@ The platform runs its model workloads on managed instance groups of Shielded VMs
 
 | Tier | Default machine type | vCPU | GPU | Quota to check |
 |---|---|---|---|---|
-| Model CPU (`modelcpu`) | `e2-standard-4` | 4 | | `E2_CPUS`, `CPUS` |
+| Model CPU (`modelcpu`) | `n2-standard-32` | 32 | | `N2_CPUS`, `CPUS` |
 | Model GPU (`modelgpu`) | `a3-ultragpu-8g` | 224 | 8x NVIDIA H200 | `CPUS` plus the H200 GPU quota |
 | Model GPU, smaller alternative | `g4-standard-48` (or `-96`, `-192`, `-384`) | 48 | 1x NVIDIA RTX PRO 6000 (2, 4, 8) | `CPUS` plus the RTX PRO 6000 GPU quota |
-| Orchestration (`temporal_worker`) | `e2-standard-8` | 8 | | `E2_CPUS`, `CPUS` |
+| Orchestration (`temporal_worker`) | `n2-highmem-32` | 32 | | `N2_CPUS`, `CPUS` |
 | GKE platform node pool | `e2-standard-4`, 1 node per zone at start, up to 64 per zone | 4 per node | | `E2_CPUS`, `CPUS` |
 
 <!-- TODO: the quota metric names for H200 (a3-ultragpu) and RTX PRO 6000 (g4) could not be verified with gcloud; neither appears in `gcloud compute regions describe` even in a region that offers G4. Fill in once confirmed in the Console quota page. -->
@@ -74,8 +74,7 @@ Each tier starts with one instance. Spot instances count against the `PREEMPTIBL
 > [!WARNING]
 > Never pick `g4-standard-6`, `-12` or `-24` for the GPU tier. They are fractional vGPU slices of one card, and the NVIDIA driver in the hardened image refuses them. `g4-standard-48` is the smallest G4 shape that attaches a whole GPU.
 
-The default sizes are the smallest that run the platform. Fundamental's own test deployments run the Model CPU tier on `e2-standard-16`, because the controller release unpacks into memory at boot and a 4 vCPU machine ran out of it. Ask your Fundamental contact for the sizing that matches your workload.
-<!-- TODO: confirm the recommended modelcpu size with engineering; the e2-standard-16 figure comes from the test deployment's tfvars comment, not from a published sizing table. -->
+The Model CPU and orchestration defaults match the sizes Fundamental uses on the other clouds. Ask your Fundamental contact for the sizing that matches your workload.
 
 ### Networking
 
