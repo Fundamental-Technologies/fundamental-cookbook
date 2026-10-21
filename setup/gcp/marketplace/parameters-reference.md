@@ -20,7 +20,7 @@ Every variable you can set in `terraform/<name>.tfvars` when deploying the **Fun
 |---|---|---|---|
 | `region` | string | `"us-west1"` | Primary region for regional resources. |
 | `zones` | list(string) | `["us-west1-a", "us-west1-b"]` | Primary zones used for zonal resources. Every tier spreads over these unless it names its own. List every zone you want from the start: changing a tier's zones later replaces its instance group. |
-| `deployment_name` | string | `"fundamental"` | Logical deployment name, used in naming and labels. Every resource name starts with it. |
+| `deployment_name` | string | `"fundamental"` | Prefix of every resource name and label. 2 to 12 characters: lowercase letters, digits and hyphens, starting with a letter and ending with a letter or digit. |
 
 ---
 

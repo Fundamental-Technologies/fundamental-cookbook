@@ -739,10 +739,10 @@ else
     [ $? = 1 ] && pass "No network named $VPC exists yet."
   fi
 fi
-if printf '%s' "$DEPLOYMENT_NAME" | grep -qE '^[a-z]([a-z0-9-]*[a-z0-9])?$'; then
-  pass "deployment_name '$DEPLOYMENT_NAME' has a valid format."
+if printf '%s' "$DEPLOYMENT_NAME" | grep -qE '^[a-z]([a-z0-9-]{0,10}[a-z0-9])?$'; then
+  pass "deployment_name '$DEPLOYMENT_NAME' has a valid format (2 to 12 characters)."
 else
-  fail "deployment_name '$DEPLOYMENT_NAME' is not valid." "Use lowercase letters, digits and hyphens, starting with a letter. It prefixes every resource name."
+  fail "deployment_name '$DEPLOYMENT_NAME' is not valid." "Use 2 to 12 characters: lowercase letters, digits and hyphens, starting with a letter and ending with a letter or digit. It prefixes every resource name."
 fi
 
 # ---------------------------------------------------------------- 11. Customer exposure (optional)
