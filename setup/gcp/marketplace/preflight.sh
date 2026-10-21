@@ -351,7 +351,15 @@ tool() {
     fail "$cmd is not installed." "$hint"
   fi
 }
-tool helm    "Install Helm: https://helm.sh/docs/intro/install/" version --short
+tool helm    "Install Helm 4: https://helm.sh/docs/intro/install/" version --short
+if command -v helm >/dev/null 2>&1; then
+  HELM_MAJOR=$(helm version --template '{{.Version}}' 2>/dev/null | sed -E 's/^v?([0-9]+).*/\1/')
+  if [ "${HELM_MAJOR:-0}" -ge 4 ] 2>/dev/null; then
+    pass "Helm major version is $HELM_MAJOR (4 or newer required)."
+  else
+    fail "Helm ${HELM_MAJOR:-unknown} is too old: the deploy script uses Helm 4 flags." "Install Helm 4: https://helm.sh/docs/intro/install/"
+  fi
+fi
 tool kubectl "Install kubectl: https://kubernetes.io/docs/tasks/tools/" version --client
 tool crane   "Install crane: https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md" version
 tool perl    "Install perl (ships with macOS and most Linux distributions)." -e 'print "$^V\n"'

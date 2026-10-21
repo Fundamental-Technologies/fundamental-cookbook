@@ -45,7 +45,7 @@ The deploy script runs on your machine and needs:
 |---|---|
 | `gcloud` | Signed in, with the deployment project set. Also install the component `gke-gcloud-auth-plugin` (`gcloud components install gke-gcloud-auth-plugin`). |
 | `terraform` | Version 1.9.0 or newer. |
-| `helm` | |
+| `helm` | Version 4 or newer. |
 | `kubectl` | |
 | `crane` | Copies the container images into your Artifact Registry. |
 | `perl`, `python3` | Used by the script itself. |
