@@ -9,16 +9,14 @@ Read this part once and gather what it asks for. Nothing here changes your subsc
 #### Azure Subscription
 
 - An Azure subscription and a **resource group** in the region where you want the platform. An existing resource group works. If you do not have one, Step 1 creates it.
-- The **Azure region** you will deploy into, decided up front. Fundamental replicates the platform machine image to that region before you deploy, so you share it during identity onboarding ([Step 1D](#d-share-the-application-ids-and-region-with-fundamental)).
+- The **Azure region** you will deploy into, decided up front. Fundamental replicates the platform machine image to that region before you deploy, so you share it during identity onboarding ([Step 1D](#d-share-your-identifiers-with-fundamental)).
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) installed and signed in.
-- The permissions below. Two different people or identities can hold them.
+- The permissions below for the person running identity onboarding ([Step 1](#1-identity-onboarding-one-time)). The identity that runs the deployment is created and granted its permissions in [Step 1C](#c-create-the-deployment-app-registration).
 
-| Who | Needs | Why |
-|---|---|---|
-| The person running identity onboarding ([Step 1](#1-identity-onboarding-one-time)) | **Owner** on the resource group | To create the managed identity and grant the deployment identity its role. |
-| | **Application Developer** role in Microsoft Entra | To create the two app registrations and their credentials. |
-| The identity running the deployment ([Step 4](#4-deploy-the-platform)) | **Owner** on the resource group | The deployment creates role assignments. |
-| | **Owner** on the certificate Key Vault | Only when you enable HTTPS. The deployment grants the platform read access to the certificate. |
+| Needs | Why |
+|---|---|
+| **Owner** on the resource group | To create the managed identity and grant the deployment identity its role. |
+| **Application Developer** role in Microsoft Entra | To create the two app registrations and their credentials. |
 
 
 > **Note:** The deployment is a standard Azure Resource Manager (ARM) deployment into your own subscription. Fundamental never has access to your subscription.
@@ -60,7 +58,7 @@ The platform runs model workloads on virtual machine scale sets, one per tier. M
 | Tier | Recommended | Alternative |
 |---|---|---|
 | Model CPU | `Standard_D32s_v7` | `Standard_E32s_v7` |
-| Model GPU | `Standard_ND96isr_H200_v5` | `Standard_NC80ads_H100_v5`, `Standard_ND96isr_H100_v5` |
+| Model GPU | `Standard_ND96isr_H200_v5` | `Standard_NC80adis_H100_v5`, `Standard_ND96isr_H100_v5` |
 | Model orchestration | `Standard_E32s_v7` | `Standard_D32s_v7` |
 | AKS user node pool | `Standard_E16as_v7` (3 to 6 nodes) | `Standard_E32as_v7` |
 
@@ -89,7 +87,6 @@ Work through the seven steps in order. Each step builds on the one before it.
 
 ### 1. Identity Onboarding (One Time)
 
-Before the first deployment, create an identity that lets the platform download Fundamental's release files, and **provide Fundamental its ID**. You do this once per environment.
 
 Set a short name for the deployment. It becomes the prefix of every resource name, so keep it to 12 characters, lowercase letters, digits and hyphens.
 
@@ -163,16 +160,17 @@ Add a client secret, certificate or federated credential in the way your organiz
 
 > **Note:** If you already have a multi-tenant deployment identity, reuse it and skip this step. Just make sure it has Owner on the resource group.
 
-#### D. Share the application IDs and region with Fundamental
+#### D. Share your identifiers with Fundamental
 
 ```bash
+echo "Tenant ID:              $TENANT_ID"
 echo "Platform access app ID: $SKR_APP_CLIENT_ID"
 echo "Deployment app ID:      $DEPLOY_APP_CLIENT_ID"
 echo "Region:                 $LOCATION"
 ```
 
 > [!IMPORTANT]
-> Send both IDs and the region to your Fundamental contact and **wait for Fundamental to confirm** before you deploy. Fundamental will then send back the values you need for [Step 2](#2-required-information).
+> Send all four values to your Fundamental contact and **wait for Fundamental to confirm** before you deploy. Fundamental will then send back the values you need for [Step 2](#2-required-information).
 
 ---
 
@@ -186,8 +184,8 @@ Collect these values before deploying.
 | `computeImageId` | Resource ID of the platform machine image | `/subscriptions/.../versions/2026.09.1` | Provided by Fundamental |
 | `Fundamental tenant ID` | Used only on the deploy command | `<fundamental-tenant-id>` | Provided by Fundamental |
 | `Region` | Region of the resource group you deploy into | `eastus2` | The region you shared in Step 1D. |
-| `infraBundleVersion` | Platform bundle version | `1.7.0` | From Fundamental's release notes |
-| `appBundleVersion` | Application bundle version | `1.7.0` | From Fundamental's release notes |
+| `infraBundleVersion` | Platform bundle version | `1.7.2` | From Fundamental's release notes |
+| `appBundleVersion` | Application bundle version | `1.7.2` | From Fundamental's release notes |
 | `aksAdminGroupObjectIds` | Entra group that gets cluster admin | `["2f1c...-..."]` | Object ID of the group from the prerequisites |
 | `userDomain` | DNS suffix for the hostnames | `customer-fundamental.com` | No scheme, no wildcard |
 | `skrMiResourceId` | Managed identity from Step 1A | `/subscriptions/.../userAssignedIdentities/fundamental-fun-mi-01` | `$MI_RESOURCE_ID` |
@@ -227,13 +225,15 @@ Run the prerequisite check before you deploy. It is read-only and takes about tw
 
 It checks the resource group, region, resource providers, identities from Step 1, the Entra group, VM size availability, quota and the TLS certificate. Fix every `FAIL` before you continue. A `SKIP` means your account lacks the permission to run that check; ask an Owner of the resource group to run the script, or verify the item yourself.
 
-If you reuse a deployment identity with another name, add `--deploy-app-id <client-id>`. Run `./preflight.sh -h` for all options.
+If you skipped Step 1C and reuse an existing deployment identity, add `--deploy-app-id <its-client-id>` so the script checks that identity. Run `./preflight.sh -h` for all options.
 
 #### B. Deploy with the Azure CLI
 
 Fundamental provides the template file `mainTemplate.json` with each release. Put it next to your `params.json` ([template here](./parameters-reference.md#paramsjson-template-cli-deploy)).
 
-Sign in as the deployment identity from Step 1C, then start the deployment:
+Sign in as the deployment identity from Step 1C, then start the deployment.
+
+The `<credential>` below is the client secret or certificate you added to the deployment app registration in Step 1C. For a certificate, pass the path to the PEM file. For a federated credential, replace `-p <credential>` with `--federated-token <token>`. See [Add credentials to your application](https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-credentials).
 
 ```bash
 az login --service-principal -u <deployAppClientId> -p <credential> --tenant "$TENANT_ID"
@@ -313,11 +313,13 @@ az network private-endpoint create \
   --manual-request false
 ```
 
-The connection is approved automatically when the subscription is in `consumerSubscriptionIds`. Note the endpoint's private IP:
+The connection is approved automatically when the subscription is in `consumerSubscriptionIds`. Note the endpoint's private IP.
 
 ```bash
-az network private-endpoint show -g <consumer-rg> -n fundamental-pe \
-  --query "customDnsConfigs[0].ipAddresses[0]" -o tsv
+PE_NIC_ID=$(az network private-endpoint show -g <consumer-rg> -n fundamental-pe \
+  --query "networkInterfaces[0].id" -o tsv)
+az network nic show --ids "$PE_NIC_ID" \
+  --query "ipConfigurations[0].privateIPAddress" -o tsv
 ```
 
 #### B. Create the DNS records
