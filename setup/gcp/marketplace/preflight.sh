@@ -63,8 +63,10 @@ SKIPPED=""
 
 section() { printf '\n%s%s%s\n' "$C_BOLD" "$1" "$C_OFF"; }
 pass()  { N_PASS=$((N_PASS+1)); printf '  %s[PASS]%s %s\n' "$C_PASS" "$C_OFF" "$1"; }
-fail()  { N_FAIL=$((N_FAIL+1)); printf '  %s[FAIL]%s %s\n' "$C_FAIL" "$C_OFF" "$1"; [ -n "${2:-}" ] && printf '         %s%s%s\n' "$C_DIM" "$2" "$C_OFF"; }
-warn()  { N_WARN=$((N_WARN+1)); printf '  %s[WARN]%s %s\n' "$C_WARN" "$C_OFF" "$1"; [ -n "${2:-}" ] && printf '         %s%s%s\n' "$C_DIM" "$2" "$C_OFF"; }
+# fail|warn "<what>" ["<hint>"] ["<command>"]: the command goes on its own line, nothing else on it, to copy as is.
+hint()  { [ -n "${1:-}" ] && printf '         %s%s%s\n' "$C_DIM" "$1" "$C_OFF"; [ -n "${2:-}" ] && printf '           %s\n' "$2"; return 0; }
+fail()  { N_FAIL=$((N_FAIL+1)); printf '  %s[FAIL]%s %s\n' "$C_FAIL" "$C_OFF" "$1"; hint "${2:-}" "${3:-}"; }
+warn()  { N_WARN=$((N_WARN+1)); printf '  %s[WARN]%s %s\n' "$C_WARN" "$C_OFF" "$1"; hint "${2:-}" "${3:-}"; }
 info()  { printf '  %s[INFO]%s %s\n' "$C_DIM" "$C_OFF" "$1"; }
 # skip "<what was not checked>" "<permission your account needs>"
 skip()  { N_SKIP=$((N_SKIP+1)); printf '  %s[SKIP]%s %s\n' "$C_SKIP" "$C_OFF" "$1"; printf '         %sNot checked: your account lacks permission. Needs: %s%s\n' "$C_DIM" "$2" "$C_OFF"; SKIPPED="${SKIPPED}  - $1 (needs: $2)"$'\n'; }
@@ -217,17 +219,17 @@ fi
 pass "$(gcloud version 2>/dev/null | head -1) is installed."
 ACCOUNT=$(gcloud config get-value account 2>/dev/null)
 if [ -z "$ACCOUNT" ] || ! run_gc auth print-access-token; then
-  fail "You are not signed in to gcloud." "Run: gcloud auth login"
+  fail "You are not signed in to gcloud." "Sign in:" "gcloud auth login"
   exit 1
 fi
 pass "Signed in as $ACCOUNT."
 if [ -z "$PROJECT_ID" ]; then
   PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
-  [ -n "$PROJECT_ID" ] || { fail "No project known." "Pass -p <project-id>, or run: gcloud config set project <project-id>"; echo; exit 1; }
+  [ -n "$PROJECT_ID" ] || { fail "No project known." "Pass -p <project-id>, or set a default:" "gcloud config set project <project-id>"; echo; exit 1; }
 fi
 CONFIG_PROJECT=$(gcloud config get-value project 2>/dev/null)
 if [ -n "$CONFIG_PROJECT" ] && [ "$CONFIG_PROJECT" != "$PROJECT_ID" ]; then
-  warn "gcloud's current project is $CONFIG_PROJECT, but this check runs against $PROJECT_ID." "The deploy script uses gcloud's current project. Before you deploy: gcloud config set project $PROJECT_ID"
+  warn "gcloud's current project is $CONFIG_PROJECT, but this check runs against $PROJECT_ID." "The deploy script uses gcloud's current project. Before you deploy:" "gcloud config set project $PROJECT_ID"
 fi
 TV_PROJECT=$(tv project_id "")
 if [ -n "$TV_PROJECT" ] && [ "$TV_PROJECT" != "$PROJECT_ID" ]; then
@@ -249,13 +251,13 @@ if run_gc projects describe "$PROJECT_ID" --format='value(projectNumber,lifecycl
 else
   case $? in
     2) skip "Project $PROJECT_ID exists and is active" "resourcemanager.projects.get on the project (roles/viewer)" ;;
-    *) fail "Project $PROJECT_ID was not found." "Check the project id: gcloud projects list" ;;
+    *) fail "Project $PROJECT_ID was not found." "Check the project id:" "gcloud projects list" ;;
   esac
 fi
 if run_gc billing projects describe "$PROJECT_ID" --format='value(billingEnabled)'; then
   case "$GC_OUT" in
     True|true) pass "Billing is enabled." ;;
-    *) fail "Billing is not enabled on the project." "Link a billing account: Console > Billing, or: gcloud billing projects link $PROJECT_ID --billing-account <id>" ;;
+    *) fail "Billing is not enabled on the project." "Link a billing account in the Console under Billing, or:" "gcloud billing projects link $PROJECT_ID --billing-account <id>" ;;
   esac
 else
   case $? in
@@ -278,7 +280,7 @@ if gc services list --enabled --format='value(config.name)'; then
   if [ -z "$MISSING" ]; then
     pass "All required APIs are enabled."
   else
-    fail "APIs not enabled:$MISSING" "Enable them: gcloud services enable$MISSING --project $PROJECT_ID"
+    fail "APIs not enabled:$MISSING" "Enable them:" "gcloud services enable$MISSING --project $PROJECT_ID"
     echo
     printf '  %sStopped here: every check below needs these APIs. Enable them, wait a minute, run again.%s\n' "$C_FAIL" "$C_OFF"
     exit 1
@@ -288,7 +290,7 @@ if gc services list --enabled --format='value(config.name)'; then
   if [ -z "$LATER" ]; then
     pass "APIs the deployment enables itself are already on (container, dns, parametermanager)."
   else
-    warn "Not enabled yet, the deployment enables them on the first run:$LATER" "That needs serviceusage.services.enable. To enable them now: gcloud services enable$LATER --project $PROJECT_ID"
+    warn "Not enabled yet, the deployment enables them on the first run:$LATER" "That needs serviceusage.services.enable. To enable them now:" "gcloud services enable$LATER --project $PROJECT_ID"
   fi
 else
   case $? in
@@ -319,7 +321,7 @@ if gc iam service-accounts describe "$DEPLOYER" --format='value(email)'; then
 else
   case $? in
     2) skip "Service account $DEPLOYER exists" "iam.serviceAccounts.get (roles/viewer)" ;;
-    *) fail "Service account $DEPLOYER was not found." "Create it: gcloud iam service-accounts create ${DEPLOYER%%@*} --project $PROJECT_ID" ;;
+    *) fail "Service account $DEPLOYER was not found." "Create it:" "gcloud iam service-accounts create ${DEPLOYER%%@*} --project $PROJECT_ID" ;;
   esac
 fi
 if run_gc auth print-access-token --impersonate-service-account="$DEPLOYER"; then
@@ -327,7 +329,7 @@ if run_gc auth print-access-token --impersonate-service-account="$DEPLOYER"; the
   export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="$DEPLOYER"
   ACCOUNT="$DEPLOYER"
 else
-  fail "$ACCOUNT cannot act as $DEPLOYER." "Grant yourself the right to mint its tokens: gcloud iam service-accounts add-iam-policy-binding $DEPLOYER --project $PROJECT_ID --member user:$ACCOUNT --role roles/iam.serviceAccountTokenCreator. A binding granted a moment ago takes about a minute to take effect."
+  fail "$ACCOUNT cannot act as $DEPLOYER." "Grant yourself the right to mint its tokens (a new binding takes about a minute to take effect):" "gcloud iam service-accounts add-iam-policy-binding $DEPLOYER --project $PROJECT_ID --member user:$ACCOUNT --role roles/iam.serviceAccountTokenCreator"
   echo
   printf '  %sStopped here: the checks below run as the deployer account.%s\n' "$C_FAIL" "$C_OFF"
   exit 1
@@ -370,7 +372,7 @@ print(" ".join(p for p in want if p not in got))' "$PERMS")
   case "$MISSING" in
     "") pass "The deployer holds every permission the deployment needs ($(printf '%s' "$PERMS" | wc -w | tr -d ' ') checked)." ;;
     __err__*) warn "Could not test the deployer's permissions." "${MISSING#__err__ }" ;;
-    *) fail "The deployer is missing permissions: $MISSING" "Grant it roles/owner: gcloud projects add-iam-policy-binding $PROJECT_ID --member $MEMBER --role roles/owner" ;;
+    *) fail "The deployer is missing permissions: $MISSING" "Grant it roles/owner:" "gcloud projects add-iam-policy-binding $PROJECT_ID --member $MEMBER --role roles/owner" ;;
   esac
 else
   info "curl or python3 missing: the deployer's permissions were not tested one by one."
@@ -416,7 +418,7 @@ if gcloud components list --format='value(id,state.name)' 2>/dev/null | grep -qE
 elif command -v gke-gcloud-auth-plugin >/dev/null 2>&1; then
   pass "gke-gcloud-auth-plugin is installed."
 else
-  fail "gke-gcloud-auth-plugin is not installed." "kubectl needs it to reach the cluster: gcloud components install gke-gcloud-auth-plugin"
+  fail "gke-gcloud-auth-plugin is not installed." "kubectl needs it to reach the cluster:" "gcloud components install gke-gcloud-auth-plugin"
 fi
 
 # ---------------------------------------------------------------- 6. Onboarding with Fundamental
@@ -472,7 +474,7 @@ check_region() {
   fi
   case $rc in
     2) skip "Region $r is valid" "compute.regions.get (roles/compute.viewer)" ;;
-    *) fail "Region '$r' is not a valid region." "Use the short name, for example us-east5. List: gcloud compute regions list" ;;
+    *) fail "Region '$r' is not a valid region." "Use the short name, for example us-east5. List them:" "gcloud compute regions list" ;;
   esac
   return 1
 }
@@ -493,7 +495,7 @@ check_zones() {
     printf ' %s ' "$all" | grep -q " $z " || bad="$bad $z"
   done
   if [ -n "$bad" ]; then
-    fail "$label: zone(s)$bad are not in region $region." "List the zones: gcloud compute zones list --filter='region:($region)'"
+    fail "$label: zone(s)$bad are not in region $region." "List the zones:" "gcloud compute zones list --filter='region:($region)'"
   else
     pass "$label: zones $zones are in $region."
   fi
@@ -615,7 +617,7 @@ while IFS='|' read -r label mtype count region zones spot; do
     skip "$label: $mtype is offered in $zones" "compute.machineTypes.get (roles/compute.viewer)"; continue
   fi
   if [ -n "$missing" ]; then
-    fail "$label: $mtype is not offered in zone(s)$missing." "Pick zones that offer it: gcloud compute machine-types list --filter='name=$mtype AND zone:($region)'. GPU shapes are often offered in a few zones only."
+    fail "$label: $mtype is not offered in zone(s)$missing." "Pick zones that offer it; GPU shapes are often offered in a few zones only. List them:" "gcloud compute machine-types list --filter='name=$mtype AND zone:($region)'"
     [ -z "$vcpu" ] && continue
   else
     pass "$label: $mtype x $count is offered in $zones."
@@ -712,12 +714,12 @@ check_subnet() {
     fi
     if [ "$want_pga" = 1 ]; then
       [ "$pga" = "True" ] && pass "$label: Private Google Access is on." \
-        || fail "$label: Private Google Access is off on $sname." "Turn it on: gcloud compute networks subnets update $sname --region $sr --project $sp --enable-private-ip-google-access"
+        || fail "$label: Private Google Access is off on $sname." "Turn it on:" "gcloud compute networks subnets update $sname --region $sr --project $sp --enable-private-ip-google-access"
     fi
     local r
     for r in $ranges; do
       printf ';%s;' "$rng" | grep -q ";$r;" && pass "$label: secondary range '$r' is present." \
-        || fail "$label: no secondary range named '$r' on $sname." "Add it: gcloud compute networks subnets update $sname --region $sr --project $sp --add-secondary-ranges $r=<cidr>"
+        || fail "$label: no secondary range named '$r' on $sname." "Add it:" "gcloud compute networks subnets update $sname --region $sr --project $sp --add-secondary-ranges $r=<cidr>"
     done
   else
     case $? in
