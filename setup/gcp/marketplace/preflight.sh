@@ -11,6 +11,9 @@
 # reported, not required.
 #
 set -uo pipefail
+# gcloud must never prompt: on a disabled API it offers to enable it, and this
+# script changes nothing.
+export CLOUDSDK_CORE_DISABLE_PROMPTS=1
 
 usage() {
   cat <<'EOF'
@@ -271,6 +274,9 @@ if gc services list --enabled --format='value(config.name)'; then
     pass "All required APIs are enabled."
   else
     fail "APIs not enabled:$MISSING" "Enable them: gcloud services enable$MISSING --project $PROJECT_ID"
+    echo
+    printf '  %sStopped here: every check below needs these APIs. Enable them, wait a minute, run again.%s\n' "$C_FAIL" "$C_OFF"
+    exit 1
   fi
   LATER=""
   for a in $APIS_SELF_ENABLED; do grep -qx "$a" "$TMP/apis" || LATER="$LATER $a"; done
@@ -415,12 +421,13 @@ info "The attestation broker's PSC service attachment must also accept your proj
 # ---------------------------------------------------------------- 7. Region and zones
 section "Region and zones"
 check_region() {
-  local r="$1"
-  if gc compute regions describe "$r" --format='value(status)'; then
+  local r="$1" rc
+  gc compute regions describe "$r" --format='value(status)'; rc=$?
+  if [ "$rc" -eq 0 ]; then
     [ "$GC_OUT" = "UP" ] && pass "Region $r is valid." || warn "Region $r is in state $GC_OUT."
     return 0
   fi
-  case $? in
+  case $rc in
     2) skip "Region $r is valid" "compute.regions.get (roles/compute.viewer)" ;;
     *) fail "Region '$r' is not a valid region." "Use the short name, for example us-east5. List: gcloud compute regions list" ;;
   esac

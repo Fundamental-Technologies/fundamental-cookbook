@@ -187,6 +187,8 @@ Copy [`preflight.sh`](./preflight.sh) from this folder into `cloud/gcp` and run 
 ./preflight.sh -p "$PROJECT_ID"
 ```
 
+If a [required API](#required-apis) is off, the script stops there: enable them with the command it prints, wait a minute, and run it again.
+
 Run it again with `-t terraform/<name>.tfvars` once your tfvars file exists ([Step 4](#4-configure-the-deployment)): it then checks the exact region, zones, machine types, quota, bundle, image, network and certificate you configured.
 
 It checks the project, billing, APIs, your permissions, local tools, the onboarding grants, zones, machine type availability, quota, organization policies and the network. Fix every `FAIL` before you continue. A `SKIP` means your account lacks the permission to run that check; ask a project owner to run the script, or verify the item yourself. Run `./preflight.sh -h` for all options.
