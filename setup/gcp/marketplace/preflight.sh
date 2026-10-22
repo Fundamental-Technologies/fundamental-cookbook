@@ -17,7 +17,7 @@ export CLOUDSDK_CORE_DISABLE_PROMPTS=1
 
 usage() {
   cat <<'EOF'
-Usage: preflight.sh [-p <project-id>] [-t <tfvars-file>]
+Usage: preflight.sh [-p <project-id>] [-s <service-account>] [-t <tfvars-file>]
 
 Checks that your Google Cloud project is ready for the Fundamental Platform.
 The script is read-only.
@@ -25,6 +25,9 @@ The script is read-only.
 Options:
   -p <project-id>  Project you deploy into (default: project_id from the tfvars
                    file, else the current gcloud project)
+  -s <account>     The deployer service account the deployment runs as
+                   (default: deployer_service_account from the tfvars file).
+                   Every check from "Deployer service account" on runs as it.
   -t <file>        Your terraform/<name>.tfvars. Enables exact checks for
                    region, zones, machine types, quota, bundle, image, existing
                    network and customer exposure. Without it the template
@@ -32,15 +35,17 @@ Options:
   -h               Show this help
 
 Example:
+  ./preflight.sh -p my-project -s fundamental-deployer@my-project.iam.gserviceaccount.com
   ./preflight.sh -t terraform/my-deployment.tfvars
 EOF
 }
 
 # ---------------------------------------------------------------- inputs
-PROJECT_ID=""; TFVARS=""
+PROJECT_ID=""; TFVARS=""; DEPLOYER=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -p) PROJECT_ID="${2:-}"; shift 2 ;;
+    -s) DEPLOYER="${2:-}"; shift 2 ;;
     -t) TFVARS="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1"; usage; exit 2 ;;
@@ -292,8 +297,44 @@ else
   esac
 fi
 
-# ---------------------------------------------------------------- 4. Your permissions
-section "Your permissions on $PROJECT_ID"
+# ---------------------------------------------------------------- 4. Deployer service account
+# The deployment runs as a service account in the project: Fundamental's
+# release grant covers the project's service accounts, never a user. From
+# here on every gcloud call impersonates it, so the checks below describe
+# the identity that will deploy.
+section "Deployer service account"
+[ -n "$DEPLOYER" ] || DEPLOYER=$(tv deployer_service_account "")
+if [ -z "$DEPLOYER" ]; then
+  fail "No deployer service account given." "Create it (deployment guide, Step 1) and pass -s <account>, or set deployer_service_account in the tfvars file. Without it the deployment runs as $ACCOUNT, which Fundamental's release grant never covers."
+  echo
+  printf '  %sStopped here: the checks below describe the deployer account.%s\n' "$C_FAIL" "$C_OFF"
+  exit 1
+fi
+case "$DEPLOYER" in
+  *@"$PROJECT_ID".iam.gserviceaccount.com) ;;
+  *) fail "$DEPLOYER is not a service account of project $PROJECT_ID." "It must be <name>@$PROJECT_ID.iam.gserviceaccount.com: only the project's own service accounts are covered by Fundamental's release grant." ;;
+esac
+if gc iam service-accounts describe "$DEPLOYER" --format='value(email)'; then
+  pass "Service account $DEPLOYER exists."
+else
+  case $? in
+    2) skip "Service account $DEPLOYER exists" "iam.serviceAccounts.get (roles/viewer)" ;;
+    *) fail "Service account $DEPLOYER was not found." "Create it: gcloud iam service-accounts create ${DEPLOYER%%@*} --project $PROJECT_ID" ;;
+  esac
+fi
+if run_gc auth print-access-token --impersonate-service-account="$DEPLOYER"; then
+  pass "$ACCOUNT can act as $DEPLOYER."
+  export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="$DEPLOYER"
+  ACCOUNT="$DEPLOYER"
+else
+  fail "$ACCOUNT cannot act as $DEPLOYER." "Grant yourself the right to mint its tokens: gcloud iam service-accounts add-iam-policy-binding $DEPLOYER --project $PROJECT_ID --member user:$ACCOUNT --role roles/iam.serviceAccountTokenCreator"
+  echo
+  printf '  %sStopped here: the checks below run as the deployer account.%s\n' "$C_FAIL" "$C_OFF"
+  exit 1
+fi
+
+# ---------------------------------------------------------------- 5. The deployer's permissions
+section "Permissions of $ACCOUNT on $PROJECT_ID"
 MEMBER="user:$ACCOUNT"
 case "$ACCOUNT" in *.gserviceaccount.com) MEMBER="serviceAccount:$ACCOUNT" ;; esac
 if gc projects get-iam-policy "$PROJECT_ID" --format=json; then
@@ -303,7 +344,7 @@ m = sys.argv[1]
 print(", ".join(sorted(b["role"] for b in json.load(sys.stdin).get("bindings", []) if m in b.get("members", []))))' "$MEMBER")
   info "Roles granted to $MEMBER directly: ${MY_ROLES:-none}. Roles through groups or folders are not listed here."
   if printf '%s' "$MY_ROLES" | grep -qE 'roles/owner'; then
-    pass "You hold roles/owner on the project."
+    pass "The deployer holds roles/owner on the project."
   fi
 else
   [ $? = 2 ] && skip "Your roles on the project" "resourcemanager.projects.getIamPolicy (roles/viewer)"
@@ -327,12 +368,12 @@ if "error" in d:
 got = set(d.get("permissions", []))
 print(" ".join(p for p in want if p not in got))' "$PERMS")
   case "$MISSING" in
-    "") pass "Your account holds every permission the deployment needs ($(printf '%s' "$PERMS" | wc -w | tr -d ' ') checked)." ;;
-    __err__*) warn "Could not test your permissions." "${MISSING#__err__ }" ;;
-    *) fail "Your account is missing permissions: $MISSING" "Ask a project owner for roles/owner on $PROJECT_ID, or a role that grants these permissions." ;;
+    "") pass "The deployer holds every permission the deployment needs ($(printf '%s' "$PERMS" | wc -w | tr -d ' ') checked)." ;;
+    __err__*) warn "Could not test the deployer's permissions." "${MISSING#__err__ }" ;;
+    *) fail "The deployer is missing permissions: $MISSING" "Grant it roles/owner: gcloud projects add-iam-policy-binding $PROJECT_ID --member $MEMBER --role roles/owner" ;;
   esac
 else
-  info "curl or python3 missing: your permissions were not tested one by one."
+  info "curl or python3 missing: the deployer's permissions were not tested one by one."
 fi
 
 # ---------------------------------------------------------------- 5. Local tools
@@ -388,7 +429,7 @@ if [ -n "$BUNDLE_VERSION" ]; then
     pass "Bundle $BUNDLE_VERSION is readable in gs://$PRODUCER_BUCKET."
   else
     case $? in
-      2) fail "Bundle bucket gs://$PRODUCER_BUCKET is not readable by $ACCOUNT." "Fundamental grants read access to the principals of project number ${PROJECT_NUMBER:-<project number>} during onboarding. Confirm onboarding is complete and that you run as an account with a role in this project." ;;
+      2) fail "Bundle bucket gs://$PRODUCER_BUCKET is not readable by $ACCOUNT." "Fundamental grants read access to the service accounts of project number ${PROJECT_NUMBER:-<project number>} during onboarding. Confirm onboarding is complete." ;;
       *) fail "Bundle $BUNDLE_VERSION was not found in gs://$PRODUCER_BUCKET/bundles/." "Check bundle_version against the release Fundamental named. $(first_err_line)" ;;
     esac
   fi
@@ -397,7 +438,7 @@ else
     pass "Bundle bucket gs://$PRODUCER_BUCKET is readable. Set bundle_version to check one release."
   else
     case $? in
-      2) fail "Bundle bucket gs://$PRODUCER_BUCKET is not readable by $ACCOUNT." "Fundamental grants read access to the principals of project number ${PROJECT_NUMBER:-<project number>} during onboarding. Confirm onboarding is complete and that you run as an account with a role in this project." ;;
+      2) fail "Bundle bucket gs://$PRODUCER_BUCKET is not readable by $ACCOUNT." "Fundamental grants read access to the service accounts of project number ${PROJECT_NUMBER:-<project number>} during onboarding. Confirm onboarding is complete." ;;
       *) warn "Could not list gs://$PRODUCER_BUCKET/bundles/." "$(first_err_line)" ;;
     esac
   fi

@@ -19,10 +19,11 @@ Read this part once and gather what it asks for. Nothing here changes your proje
 
 | Who | Needs | Why |
 |---|---|---|
-| The person running the deployment ([Step 5](#5-deploy-the-platform)) | **Owner** (`roles/owner`) on the project | The deployment creates networks, a GKE cluster, KMS keys, secrets, service accounts and project-level IAM grants, sets project metadata and enables APIs. A narrower role works when it holds every permission the [prerequisite check](preflight.sh) tests. |
-| | A role in the project, so Fundamental's release bucket grant applies to you | Fundamental grants read access on its release bucket to the principals of your project, keyed by project number. |
+| The person doing the onboarding ([Step 1](#1-onboarding-with-fundamental-one-time)) | **Owner** (`roles/owner`) on the project | Creates the deployer service account and grants it its role. |
+| The deployer service account ([Step 1](#1-onboarding-with-fundamental-one-time)) | **Owner** (`roles/owner`) on the project | The deployment creates networks, a GKE cluster, KMS keys, secrets, service accounts and project-level IAM grants, sets project metadata and enables APIs. A narrower role works when it holds every permission the [prerequisite check](preflight.sh) tests. |
+| The person running the deployment ([Step 5](#5-deploy-the-platform)) | **Service Account Token Creator** on the deployer service account | The deploy script acts as the deployer. No key file is created. |
 
-> **Note:** The deployment runs with your own credentials, from your machine, into your own project. The only access Fundamental's side gets is a read-only `roles/compute.viewer` grant for its attestation broker service account, which the deployment adds so the broker can verify the identity of the sealed virtual machines.
+> **Note:** The deployment runs from your machine into your own project, as a service account you own. Fundamental's release bucket is readable by the service accounts of your project once onboarding is done; it is never readable by a user account, which is why the deployment runs as one. The only access Fundamental's side gets is a read-only `roles/compute.viewer` grant for its attestation broker service account, which the deployment adds so the broker can verify the identity of the sealed virtual machines.
 
 #### Required APIs
 
@@ -153,6 +154,20 @@ echo "Project number: $(gcloud projects describe "$PROJECT_ID" --format='value(p
 echo "Region:         $REGION"
 ```
 
+Create the **deployer service account** the deployment runs as. It owns the project like an operator would; you only get the right to act as it, and no key is created:
+
+```bash
+export DEPLOYER="fundamental-deployer@${PROJECT_ID}.iam.gserviceaccount.com"
+
+gcloud iam service-accounts create fundamental-deployer --project "$PROJECT_ID"
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member "serviceAccount:$DEPLOYER" --role roles/owner
+gcloud iam service-accounts add-iam-policy-binding "$DEPLOYER" --project "$PROJECT_ID" \
+  --member "user:$(gcloud config get account)" --role roles/iam.serviceAccountTokenCreator
+```
+
+Every colleague who will run the deployment gets the same Token Creator binding.
+
 > [!IMPORTANT]
 > Send the project number and the region to your Fundamental contact and **wait for Fundamental to confirm** before you deploy. Fundamental also names the `bundle_version` and `hardened_image` you need in [Step 4](#4-configure-the-deployment).
 
@@ -184,14 +199,14 @@ gcloud components install gke-gcloud-auth-plugin
 Copy [`preflight.sh`](./preflight.sh) from this folder into `cloud/gcp` and run it. It is read-only.
 
 ```bash
-./preflight.sh -p "$PROJECT_ID"
+./preflight.sh -p "$PROJECT_ID" -s "$DEPLOYER"
 ```
 
-If a [required API](#required-apis) is off, the script stops there: enable them with the command it prints, wait a minute, and run it again.
+If a [required API](#required-apis) is off, the script stops there: enable them with the command it prints, wait a minute, and run it again. From the deployer service account check on, every check runs as that account, so the results describe the identity that will deploy.
 
-Run it again with `-t terraform/<name>.tfvars` once your tfvars file exists ([Step 4](#4-configure-the-deployment)): it then checks the exact region, zones, machine types, quota, bundle, image, network and certificate you configured.
+Run it again with `-t terraform/<name>.tfvars` once your tfvars file exists ([Step 4](#4-configure-the-deployment)): it then checks the exact region, zones, machine types, quota, bundle, image, network and certificate you configured, and takes the deployer account from the file.
 
-It checks the project, billing, APIs, your permissions, local tools, the onboarding grants, zones, machine type availability, quota, organization policies and the network. Fix every `FAIL` before you continue. A `SKIP` means your account lacks the permission to run that check; ask a project owner to run the script, or verify the item yourself. Run `./preflight.sh -h` for all options.
+It checks the project, billing, APIs, the deployer account and its permissions, local tools, the onboarding grants, zones, machine type availability, quota, organization policies and the network. Fix every `FAIL` before you continue. A `SKIP` means your account lacks the permission to run that check; ask a project owner to run the script, or verify the item yourself. Run `./preflight.sh -h` for all options.
 
 ---
 
@@ -203,11 +218,12 @@ One file configures a deployment: `terraform/<name>.tfvars`. Start from the exam
 cp terraform/example.tfvars terraform/my-deployment.tfvars
 ```
 
-Three values are required:
+Four values are required:
 
 | Variable | Description | Example |
 |---|---|---|
 | `project_id` | The project you deploy into | `my-project-123456` |
+| `deployer_service_account` | The service account from [Step 1](#1-onboarding-with-fundamental-one-time) | `fundamental-deployer@my-project-123456.iam.gserviceaccount.com` |
 | `bundle_version` | The release bundle, as `X.Y.Z` | `1.0.2` |
 | `hardened_image` | The sealed-tier boot image Fundamental named for the release | `projects/fundamental-public/global/images/fun-gce-secure-1-0-0` |
 
@@ -235,7 +251,7 @@ The full list is in the [Parameters Reference](./parameters-reference.md). The f
 scripts/deploy/deploy.sh --tfvars terraform/my-deployment.tfvars
 ```
 
-The script:
+The script acts as `deployer_service_account` for everything it does (it prints `running as <account>` first), and:
 
 1. Creates the Terraform state bucket `<project_id>-tfstate-fun` in your project on the first run and points Terraform at it. Every later run, from any machine, finds the deployment through this bucket.
 2. Prints a Terraform **plan** and asks `Apply this plan? [y/N]`. The plan lists every resource the run will create, change or destroy. Read it, then answer `y`. Answering `n` stops the run and leaves the plan file in `terraform/` for inspection. `--auto-approve` skips the prompt.

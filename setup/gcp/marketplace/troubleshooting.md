@@ -39,7 +39,7 @@ If it is a leftover of a deployment that no longer exists, move it out of the wa
 
 **Symptom:** `terraform plan` fails on `data.google_storage_bucket_object_content.app_manifest` with a `403` or `AccessDenied` on `bundles/<version>/app-manifest.json`, or `404` / `object doesn't exist`.
 
-**Cause:** Terraform reads the release's manifest from Fundamental's release bucket. A `403` means your account is not covered by Fundamental's read grant: onboarding is not complete, or you run as an account that holds no role in the onboarded project. A `404` means `bundle_version` names a release that is not published.
+**Cause:** Terraform reads the release's manifest from Fundamental's release bucket. A `403` means the identity reading it is not covered by Fundamental's read grant, which applies to the service accounts of the onboarded project only: onboarding is not complete, or `deployer_service_account` is unset and the run used your own account. A `404` means `bundle_version` names a release that is not published.
 
 **Fix:** for a `403`, confirm with your Fundamental contact that onboarding for your project number is complete (Step 1) and run as an account with a role in that project. For a `404`, set `bundle_version` to the release Fundamental named. The prerequisite check tests both.
 

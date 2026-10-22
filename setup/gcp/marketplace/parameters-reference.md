@@ -9,6 +9,7 @@ Every variable you can set in `terraform/<name>.tfvars` when deploying the **Fun
 | Variable | Type | Description |
 |---|---|---|
 | `project_id` | string | Project where resources are deployed. |
+| `deployer_service_account` | string | Service account in the project the deployment runs as, `fundamental-deployer@<project_id>.iam.gserviceaccount.com` by convention. Fundamental's release grant covers the project's service accounts only, so the deploy script and the Terraform providers act as this account. Optional for Terraform, required in practice. |
 | `bundle_version` | string | The release bundle this deployment runs, as a plain `X.Y.Z`. Published versions are immutable. Change it and run the deploy script again to upgrade. |
 | `hardened_image` | string | Producer hardened GCE image for the sealed tiers, `projects/fundamental-public/global/images/fun-gce-<profile>-<version>`. Fundamental names the image for the release. |
 
