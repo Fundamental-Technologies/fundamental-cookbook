@@ -185,7 +185,7 @@ Fill the eight required values. Everything else uses the template default. The l
 
     "userCertificateKeyVaultResourceId": { "value": "" },
     "additionalConsumerSubscriptionIds": { "value": "" },
-    "modelGpuVmSize":            { "value": "Standard_NC80ads_H100_v5" },
+    "modelGpuVmSize":            { "value": "Standard_NC80adis_H100_v5" },
     "modelGpuZones":             { "value": [] },
     "aksAvailabilityZones":      { "value": ["1", "2"] },
     "tags":                      { "value": { "vendor": "fundamental" } }
