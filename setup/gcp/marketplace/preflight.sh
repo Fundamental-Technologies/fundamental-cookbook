@@ -327,7 +327,7 @@ if run_gc auth print-access-token --impersonate-service-account="$DEPLOYER"; the
   export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="$DEPLOYER"
   ACCOUNT="$DEPLOYER"
 else
-  fail "$ACCOUNT cannot act as $DEPLOYER." "Grant yourself the right to mint its tokens: gcloud iam service-accounts add-iam-policy-binding $DEPLOYER --project $PROJECT_ID --member user:$ACCOUNT --role roles/iam.serviceAccountTokenCreator"
+  fail "$ACCOUNT cannot act as $DEPLOYER." "Grant yourself the right to mint its tokens: gcloud iam service-accounts add-iam-policy-binding $DEPLOYER --project $PROJECT_ID --member user:$ACCOUNT --role roles/iam.serviceAccountTokenCreator. A binding granted a moment ago takes about a minute to take effect."
   echo
   printf '  %sStopped here: the checks below run as the deployer account.%s\n' "$C_FAIL" "$C_OFF"
   exit 1
@@ -434,7 +434,9 @@ if [ -n "$BUNDLE_VERSION" ]; then
     esac
   fi
 else
-  if gc storage ls "gs://$PRODUCER_BUCKET/bundles/"; then
+  # bundles/* and not bundles/: for the plain form gcloud lists the prefix "bundles"
+  # at bucket level, which the managed-folder grant does not cover.
+  if gc storage ls "gs://$PRODUCER_BUCKET/bundles/*"; then
     pass "Bundle bucket gs://$PRODUCER_BUCKET is readable. Set bundle_version to check one release."
   else
     case $? in

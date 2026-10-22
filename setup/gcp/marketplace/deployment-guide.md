@@ -166,7 +166,7 @@ gcloud iam service-accounts add-iam-policy-binding "$DEPLOYER" --project "$PROJE
   --member "user:$(gcloud config get account)" --role roles/iam.serviceAccountTokenCreator
 ```
 
-Every colleague who will run the deployment gets the same Token Creator binding.
+Every colleague who will run the deployment gets the same Token Creator binding. A new binding takes about a minute to take effect.
 
 > [!IMPORTANT]
 > Send the project number and the region to your Fundamental contact and **wait for Fundamental to confirm** before you deploy. Fundamental also names the `bundle_version` and `hardened_image` you need in [Step 4](#4-configure-the-deployment).
