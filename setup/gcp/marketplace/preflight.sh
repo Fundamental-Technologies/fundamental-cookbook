@@ -244,7 +244,7 @@ if run_gc projects describe "$PROJECT_ID" --format='value(projectNumber,lifecycl
   PROJECT_NUMBER=$(printf '%s' "$GC_OUT" | cut -f1); P_STATE=$(printf '%s' "$GC_OUT" | cut -f2)
   if [ "$P_STATE" = "ACTIVE" ]; then
     pass "Project exists and is active (number $PROJECT_NUMBER)."
-    info "Share the project number $PROJECT_NUMBER and the region with Fundamental for onboarding."
+    info "Share the project ID $PROJECT_ID, the project number $PROJECT_NUMBER and the region with Fundamental for onboarding."
   else
     fail "Project is in state $P_STATE." "The project must be ACTIVE."
   fi
@@ -929,7 +929,7 @@ check_list_policy compute.vmExternalIpAccess "irrelevant here: the deployment cr
 
 # ---------------------------------------------------------------- 13. Not checked by this script
 section "Confirm yourself"
-info "Fundamental confirmed your project number${PROJECT_NUMBER:+ ($PROJECT_NUMBER)} and region: bundle bucket, hardened image and attestation broker access."
+info "Fundamental confirmed your project ID, project number${PROJECT_NUMBER:+ ($PROJECT_NUMBER)} and region: bundle bucket, hardened image and attestation broker access."
 if ! tv_set existing_network.network; then
   info "The VPC ranges ($(tv vpc_cidr 10.0.0.0/16), control plane $(tv gke_master_ipv4_cidr 172.16.0.0/28)) do not overlap a network you will peer or connect from."
 fi

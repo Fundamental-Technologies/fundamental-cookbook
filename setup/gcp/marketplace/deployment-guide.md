@@ -128,6 +128,7 @@ With customer exposure on, have ready:
 
 Onboarding happens once per project. Send your Fundamental contact:
 
+- the **project ID**,
 - the **project number**,
 - the **region**.
 
@@ -150,6 +151,7 @@ export PROJECT_ID=<your-project-id>
 export REGION=<region>                      # for example us-east5
 
 gcloud config set project "$PROJECT_ID"
+echo "Project ID:     $PROJECT_ID"
 echo "Project number: $(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
 echo "Region:         $REGION"
 ```
@@ -169,7 +171,7 @@ gcloud iam service-accounts add-iam-policy-binding "$DEPLOYER" --project "$PROJE
 Every colleague who will run the deployment gets the same Token Creator binding. A new binding takes about a minute to take effect.
 
 > [!IMPORTANT]
-> Send the project number and the region to your Fundamental contact and **wait for Fundamental to confirm** before you deploy. Fundamental also names the `bundle_version` and `hardened_image` you need in [Step 4](#4-configure-the-deployment).
+> Send the project ID, the project number and the region to your Fundamental contact and **wait for Fundamental to confirm** before you deploy. Fundamental also names the `bundle_version` and `hardened_image` you need in [Step 4](#4-configure-the-deployment).
 
 ---
 
