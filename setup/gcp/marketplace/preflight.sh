@@ -916,7 +916,7 @@ if [ "$EXPOSURE" = "true" ]; then
 fi
 check_list_policy iam.allowedPolicyMemberDomains "principals from any domain may be granted roles." \
   denies '.' "no external principal may be granted a role" \
-  "The deployment grants roles/compute.viewer to Fundamental's attestation broker service account (an external principal). Ask your org admin for an exception on this project, or ask Fundamental."
+  "The deployment binds Fundamental's attestation broker service account (an external principal) to a custom role with one permission, compute.instances.getShieldedInstanceIdentity. Ask your org admin for an exception on this project, or ask Fundamental."
 check_list_policy gcp.resourceLocations "resources may be created in any location." \
   denies 'in:(us|global)-locations|'"$REGION" "a location the deployment uses is denied" \
   "The deployment creates resources in $REGION, us-central1 (attestation endpoint), ${GPU_REGION} (GPU tier) and the multi-region $(tv storage_location US) (buckets, key ring). Make sure all are allowed."

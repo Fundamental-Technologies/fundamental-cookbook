@@ -142,7 +142,7 @@ These point at Fundamental's side and are set for you. Do not change them unless
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
-| `producer_broker_service_account_email` | string | `"fun-attestation-broker@fun-marketplace-prod.iam.gserviceaccount.com"` | Fundamental's broker service account, granted `roles/compute.viewer` in your project to verify the sealed VMs' identity. |
+| `producer_broker_service_account_email` | string | `"fun-attestation-broker@fun-marketplace-prod.iam.gserviceaccount.com"` | Fundamental's broker service account. It gets a custom role in your project with `compute.instances.getShieldedInstanceIdentity` only, to verify the sealed VMs' identity. |
 | `producer_release_bucket_name` | string | `"fun-marketplace-us"` | Fundamental's release bucket. The bundle and the feature flags for your project are read from it. |
 | `producer_attestation_service_attachment` | string | `"https://www.googleapis.com/compute/v1/projects/fun-marketplace-prod/regions/us-central1/serviceAttachments/fun-attestation-broker-psc"` | Fundamental's PSC service attachment for the attestation broker. Empty skips creating the endpoint. |
 
