@@ -23,7 +23,7 @@ Read this part once and gather what it asks for. Nothing here changes your proje
 | The deployer service account ([Step 1](#1-onboarding-with-fundamental-one-time)) | **Owner** (`roles/owner`) on the project | The deployment creates networks, a GKE cluster, KMS keys, secrets, service accounts and project-level IAM grants, sets project metadata and enables APIs. A narrower role works when it holds every permission the [prerequisite check](preflight.sh) tests. |
 | The person running the deployment ([Step 5](#5-deploy-the-platform)) | **Service Account Token Creator** on the deployer service account | The deploy script acts as the deployer. No key file is created. |
 
-> **Note:** The deployment runs from your machine into your own project, as a service account you own. Fundamental's release bucket is readable by the service accounts of your project once onboarding is done; it is never readable by a user account, which is why the deployment runs as one. The only access Fundamental's side gets is a read-only `roles/compute.viewer` grant for its attestation broker service account, which the deployment adds so the broker can verify the identity of the sealed virtual machines.
+> **Note:** The deployment runs from your machine into your own project, as a service account you own. Fundamental's release bucket is readable by the service accounts of your project once onboarding is done; it is never readable by a user account, which is why the deployment runs as one. The only access Fundamental's side gets is a custom role with the single permission `compute.instances.getShieldedInstanceIdentity` for its attestation broker service account, which the deployment adds so the broker can verify the identity of the sealed virtual machines.
 
 #### Required APIs
 
@@ -227,7 +227,7 @@ Four values are required:
 | `project_id` | The project you deploy into | `my-project-123456` |
 | `deployer_service_account` | The service account from [Step 1](#1-onboarding-with-fundamental-one-time) | `fundamental-deployer@my-project-123456.iam.gserviceaccount.com` |
 | `bundle_version` | The release bundle, as `X.Y.Z` | `1.0.2` |
-| `hardened_image` | The sealed-tier boot image Fundamental named for the release | `projects/fundamental-public/global/images/fun-gce-secure-1-0-0` |
+| `hardened_image` | The sealed-tier boot image Fundamental named for the release | `projects/fundamental-public/global/images/fun-gce-secure-0-1-0` |
 
 Everything else is commented out in the example with its default. The settings most deployments change:
 
