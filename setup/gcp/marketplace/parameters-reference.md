@@ -9,7 +9,7 @@ Every variable you can set in `terraform/<name>.tfvars` when deploying the **Fun
 | Variable | Type | Description |
 |---|---|---|
 | `project_id` | string | Project where resources are deployed. |
-| `deployer_service_account` | string | Service account in the project the deployment runs as, `fundamental-deployer@<project_id>.iam.gserviceaccount.com` by convention. Fundamental's release grant covers the project's service accounts only, so the deploy script and the Terraform providers act as this account. Optional for Terraform, required in practice. |
+| `deployer_service_account` | string | Service account in the project the deployment runs as, `fundamental-deployer@<project_id>.iam.gserviceaccount.com` by convention. Fundamental's release grant covers the project's service accounts only, so the deploy script and the Terraform providers act as this account. Required, and it must be an account of `project_id`: Terraform rejects a plan without it and the deploy script stops before `terraform init`. |
 | `bundle_version` | string | The release bundle this deployment runs, as a plain `X.Y.Z`. Published versions are immutable. Change it and run the deploy script again to upgrade. |
 | `hardened_image` | string | Producer hardened GCE image for the sealed tiers, `projects/fundamental-public/global/images/fun-gce-<profile>-<version>`. Fundamental names the image for the release. |
 
@@ -162,7 +162,7 @@ The longer version below shows every variable with its default. Delete the lines
 # ----------------------------------------------------------------- required --
 project_id     = "my-project-123456"
 bundle_version = "1.0.2"
-hardened_image = "projects/fundamental-public/global/images/fun-gce-secure-1-0-0"
+hardened_image = "projects/fundamental-public/global/images/fun-gce-secure-0-1-0"
 
 # ------------------------------------------------------------------- region --
 region          = "us-west1"

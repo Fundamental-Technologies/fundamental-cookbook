@@ -223,7 +223,7 @@ You must set four values:
 | `project_id` | The project you deploy into | `my-project-123456` |
 | `deployer_service_account` | The service account from [Step 1](#1-onboarding-with-fundamental-one-time) | `fundamental-deployer@my-project-123456.iam.gserviceaccount.com` |
 | `bundle_version` | The release bundle, as `X.Y.Z` | `1.0.2` |
-| `hardened_image` | The sealed-tier boot image Fundamental named for the release | `projects/fundamental-public/global/images/fun-gce-secure-1-0-0` |
+| `hardened_image` | The sealed-tier boot image Fundamental named for the release | `projects/fundamental-public/global/images/fun-gce-secure-0-1-0` |
 
 The example lists every other setting commented out, with its default. The settings most deployments change:
 
