@@ -299,7 +299,7 @@ With customer exposure off, the platform answers only inside the deployment VPC,
 With customer exposure on, the edge publishes a Private Service Connect service attachment. Connect to it from the consumer project you listed in `allowed_consumer_projects`.
 
 > [!NOTE]
-> Turn customer exposure on in a second run. The edge looks up the apps' network endpoint groups, which exist only once the first run has installed the charts. Deploy with exposure off first, then set `customer_exposure_enabled = true` with the `edge_*`, `exposed_apps` and `allowed_consumer_projects` settings and run `deploy.sh` again. TODO @danv - check this
+> Turn customer exposure on in a second run. The edge looks up the apps' network endpoint groups, which exist only once the first run has installed the charts. Deploy with exposure off first, then set `customer_exposure_enabled = true` with the `edge_*`, `exposed_apps` and `allowed_consumer_projects` settings and run `deploy.sh` again. 
 
 #### A. Create a PSC endpoint
 
