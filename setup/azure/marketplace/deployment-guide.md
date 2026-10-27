@@ -27,11 +27,9 @@ The platform runs on a private Azure Kubernetes Service (AKS) cluster. Local clu
 
 #### Consumer Network
 
-The platform is private. There is no public address for the portal or the API. Users and applications reach it through a **Private Endpoint** you create in a virtual network (VNet) you own, after the deployment finishes ([Step 6](#6-connect-your-network)).
+The platform is private. There is no public address for the portal or the API. Users and applications reach it through a **Private Endpoint** in a virtual network (VNet) you own. You create that endpoint after the deployment finishes ([Step 6](#6-connect-your-network)).
 
-Decide which VNet your users and client applications will connect from.
-
-> **Note:** Private Endpoints are only accepted from the subscription you deploy into. To connect from other subscriptions, list them in `additionalConsumerSubscriptionIds` deployment parameter at deploy time.
+**Note**, Private Endpoints are only accepted from the subscription you deploy into. If the VNet your users connect from is in a different subscription, note that subscription ID. You pass it in the `additionalConsumerSubscriptionIds` parameter in [Step 3](#3-optional-configuration).
 
 #### DNS and TLS
 
@@ -181,8 +179,8 @@ Collect these values before deploying.
 | Parameter | Description | Example | Notes |
 |---|---|---|---|
 | `deploymentName` | Prefix for all resource names | `fundamental` | 2 to 12 chars, lowercase letters, digits, hyphens. Same value you used in Step 1. |
-| `computeImageId` | Resource ID of the platform machine image | `/subscriptions/.../versions/2026.09.1` | Provided by Fundamental |
-| `Fundamental tenant ID` | Used only on the deploy command | `<fundamental-tenant-id>` | Provided by Fundamental |
+| `computeImageId` | Resource ID of the platform machine image | `/subscriptions/.../versions/2026.09.1` | Sent by Fundamental in the confirmation from Step 1D. Changes with each release. |
+| `Fundamental tenant ID` | Used only on the deploy command | `<fundamental-tenant-id>` | Sent by Fundamental in the confirmation from Step 1D. Passed as `--aux-tenants` in Step 4B. |
 | `Region` | Region of the resource group you deploy into | `eastus2` | The region you shared in Step 1D. |
 | `infraBundleVersion` | Platform bundle version | `1.7.2` | From Fundamental's release notes |
 | `appBundleVersion` | Application bundle version | `1.7.2` | From Fundamental's release notes |
@@ -194,6 +192,8 @@ Collect these values before deploying.
 
 Copy [`params.example.json`](./params.example.json) to `params.json` and fill in these values. The full parameter list, including every optional setting, is in the [Parameters Reference](./parameters-reference.md).
 
+> **Note:** The defaults for availability zones, capacity reservations and dedicated hosts are fine for most deployments. One exception: regions without availability zones (for example `westus`) need `"aksAvailabilityZones": []` in `params.json`.
+
 ---
 
 ### 3. Optional Configuration
@@ -204,7 +204,7 @@ The defaults give you one CPU, one GPU and one orchestration machine, a 3 to 6 n
 |---|---|
 | Machine sizes and counts | See [Compute Tiers](./parameters-reference.md#compute-tiers). |
 | Split train and predict tiers | See [Split Tiers](./parameters-reference.md#optional-split-trainpredict-tiers). |
-| Availability zones | Your region has zones and you want zonal placement, or a GPU size is only offered in one zone. |
+| Availability zones | Your region has zones and you want zonal placement, or a GPU size is only offered in one zone. Your region has no zones: set `aksAvailabilityZones` to `[]`. |
 | Capacity reservations or dedicated hosts | You already own reserved capacity for a tier. |
 | `userCertificateKeyVaultResourceId` | You want HTTPS. See [DNS and TLS](#dns-and-tls). |
 | `additionalConsumerSubscriptionIds` | Users connect from subscriptions other than the one you deploy into. |
@@ -259,6 +259,16 @@ az deployment group show -g "$RG" -n fundamental --query properties.provisioning
 ```
 
 Or in the portal: **Resource groups** -> your resource group -> **Deployments** -> `fundamental`.
+
+#### C. If the deployment fails
+
+It is safe to run the same deploy command again. The deployment is incremental: resources that already exist are kept, and only missing or changed resources are created or updated. Keep the same `--name` so the new run replaces the failed deployment record.
+
+Azure does not roll back a failed deployment. Resources created before the failure stay in your resource group.
+
+1. Find the failed step. The command is in [Step 5A](#a-check-the-deployment-state).
+2. Fix the cause. The [Troubleshooting guide](./troubleshooting.md#deployment-errors) lists the common errors. If the error names a scale set, follow the steps there before you continue.
+3. Run the deploy command from Step 4B again.
 
 ---
 
@@ -353,6 +363,8 @@ The platform API is served at `<scheme>://fundamental-api.<userDomain>`. It is r
 ## Troubleshooting
 
 If a deployment fails or you cannot reach the platform, see the [Troubleshooting guide](./troubleshooting.md).
+
+Once your network is connected ([Step 6](#6-connect-your-network)), open `<scheme>://fundamental-grafana.<userDomain>`. It has ready-to-use dashboards for platform logs and metrics. Use them to troubleshoot a tier that is unhealthy or a workload that fails.
 
 ---
 
