@@ -354,16 +354,16 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 TIERS=""
 add_tier() { TIERS="${TIERS}$1|$2|$3|$4|$5"$'\n'; }
 if [ "$(pval modelCpuLayout combined)" = "split" ]; then
-  add_tier "Model CPU train"   "$(pval modelCpuTrainVmSize Standard_D32s_v7)"   "$(( $(pval modelCpuTrainInstanceCount 1) + EXTRA ))"   "$(parr modelCpuZones "")" modelCpuZones
-  add_tier "Model CPU predict" "$(pval modelCpuPredictVmSize Standard_D32s_v7)" "$(( $(pval modelCpuPredictInstanceCount 1) + EXTRA ))" "$(parr modelCpuZones "")" modelCpuZones
+  add_tier "Model CPU train"   "$(pval modelCpuTrainVmSize Standard_D192s_v7)"   "$(( $(pval modelCpuTrainInstanceCount 1) + EXTRA ))"   "$(parr modelCpuZones "")" modelCpuZones
+  add_tier "Model CPU predict" "$(pval modelCpuPredictVmSize Standard_D192s_v7)" "$(( $(pval modelCpuPredictInstanceCount 1) + EXTRA ))" "$(parr modelCpuZones "")" modelCpuZones
 else
-  add_tier "Model CPU" "$(pval modelCpuVmSize Standard_D32s_v7)" "$(( $(pval modelCpuInstanceCount 1) + EXTRA ))" "$(parr modelCpuZones "")" modelCpuZones
+  add_tier "Model CPU" "$(pval modelCpuVmSize Standard_D192s_v7)" "$(( $(pval modelCpuInstanceCount 1) + EXTRA ))" "$(parr modelCpuZones "")" modelCpuZones
 fi
 if [ "$(pval modelGpuLayout combined)" = "split" ]; then
-  add_tier "Model GPU train"   "$(pval modelGpuTrainVmSize Standard_NC40ads_H100_v5)"   "$(( $(pval modelGpuTrainInstanceCount 1) + EXTRA ))"   "$(parr modelGpuZones "")" modelGpuZones
-  add_tier "Model GPU predict" "$(pval modelGpuPredictVmSize Standard_NC40ads_H100_v5)" "$(( $(pval modelGpuPredictInstanceCount 1) + EXTRA ))" "$(parr modelGpuZones "")" modelGpuZones
+  add_tier "Model GPU train"   "$(pval modelGpuTrainVmSize Standard_ND96isr_H200_v5)"   "$(( $(pval modelGpuTrainInstanceCount 1) + EXTRA ))"   "$(parr modelGpuZones "")" modelGpuZones
+  add_tier "Model GPU predict" "$(pval modelGpuPredictVmSize Standard_ND96isr_H200_v5)" "$(( $(pval modelGpuPredictInstanceCount 1) + EXTRA ))" "$(parr modelGpuZones "")" modelGpuZones
 else
-  add_tier "Model GPU" "$(pval modelGpuVmSize Standard_NC40ads_H100_v5)" "$(( $(pval modelGpuInstanceCount 1) + EXTRA ))" "$(parr modelGpuZones "")" modelGpuZones
+  add_tier "Model GPU" "$(pval modelGpuVmSize Standard_ND96isr_H200_v5)" "$(( $(pval modelGpuInstanceCount 1) + EXTRA ))" "$(parr modelGpuZones "")" modelGpuZones
 fi
 add_tier "Model orchestration" "$(pval modelOrchestrationVmSize Standard_E32s_v7)" "$(( $(pval modelOrchestrationInstanceCount 1) + EXTRA ))" "$(parr modelOrchestrationZones "")" modelOrchestrationZones
 # The AKS pool starts at its minimum, so quota is checked for that, floored at 3 nodes.

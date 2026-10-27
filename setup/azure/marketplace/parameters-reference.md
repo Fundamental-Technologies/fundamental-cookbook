@@ -81,10 +81,10 @@ Each model tier is a virtual machine scale set. Set a size, an instance count an
 
 | Parameter | Default | Notes |
 |---|---|---|
-| `modelCpuVmSize` | `Standard_D32s_v7` | CPU inference and training |
+| `modelCpuVmSize` | `Standard_D192s_v7` | CPU inference and training |
 | `modelCpuInstanceCount` | `1` | 1 to 5 |
 | `modelCpuZones` | `[]` | For example `["1","2"]`. Empty means regional. |
-| `modelGpuVmSize` | `Standard_NC40ads_H100_v5` | GPU inference and training |
+| `modelGpuVmSize` | `Standard_ND96isr_H200_v5` | GPU inference and training |
 | `modelGpuInstanceCount` | `1` | 1 to 5 |
 | `modelGpuZones` | `[]` | GPU sizes are often offered in only some zones. |
 | `modelOrchestrationVmSize` | `Standard_E32s_v7` | Workflow orchestration |
@@ -101,9 +101,9 @@ By default each compute type is one **combined** scale set handling both trainin
 |---|---|---|
 | `modelCpuLayout` | `combined` | `combined` or `split` |
 | `modelGpuLayout` | `combined` | `combined` or `split`. A split GPU layout requires a split CPU layout. |
-| `modelCpuTrainVmSize` / `modelCpuPredictVmSize` | `Standard_D32s_v7` | Used only when `modelCpuLayout` is `split` |
+| `modelCpuTrainVmSize` / `modelCpuPredictVmSize` | `Standard_D192s_v7` | Used only when `modelCpuLayout` is `split` |
 | `modelCpuTrainInstanceCount` / `modelCpuPredictInstanceCount` | `1` | 1 to 5 |
-| `modelGpuTrainVmSize` / `modelGpuPredictVmSize` | `Standard_NC40ads_H100_v5` | Used only when `modelGpuLayout` is `split` |
+| `modelGpuTrainVmSize` / `modelGpuPredictVmSize` | `Standard_ND96isr_H200_v5` | Used only when `modelGpuLayout` is `split` |
 | `modelGpuTrainInstanceCount` / `modelGpuPredictInstanceCount` | `1` | 1 to 5 |
 
 
