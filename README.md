@@ -15,3 +15,4 @@ Infrastructure setup guides for deploying the Fundamental Platform.
 | Guide | Description |
 |---|---|
 | [AWS Marketplace](setup/aws/marketplace/) | Deploy the Fundamental Platform via AWS Marketplace |
+| [Azure](setup/azure/marketplace/) | Deploy the Fundamental Platform on Azure |

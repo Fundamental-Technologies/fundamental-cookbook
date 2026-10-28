@@ -1,0 +1,384 @@
+# Deployment Guide
+
+## Part 1: Before You Start
+
+Read this part once and gather what it asks for. Nothing here changes your subscription yet.
+
+### Prerequisites
+
+#### Azure Subscription
+
+- An Azure subscription and a **resource group** in the region where you want the platform. An existing resource group works. If you do not have one, Step 1 creates it.
+- The **Azure region** you will deploy into, decided up front. Fundamental replicates the platform machine image to that region before you deploy, so you share it during identity onboarding ([Step 1D](#d-share-your-identifiers-with-fundamental)).
+- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) installed and signed in.
+- The permissions below for the person running identity onboarding ([Step 1](#1-identity-onboarding-one-time)). The identity that runs the deployment is created and granted its permissions in [Step 1C](#c-create-the-deployment-app-registration).
+
+| Needs | Why |
+|---|---|
+| **Owner** on the resource group | To create the managed identity and grant the deployment identity its role. |
+| **Application Developer** role in Microsoft Entra | To create the two app registrations and their credentials. |
+
+
+> **Note:** The deployment is a standard Azure Resource Manager (ARM) deployment into your own subscription. Fundamental never has access to your subscription.
+
+#### Microsoft Entra Group for Cluster Admins
+
+The platform runs on a private Azure Kubernetes Service (AKS) cluster. Local cluster accounts are disabled. Create or pick a Microsoft Entra group and note its **object ID**. Members of this group get Cluster Admin rights.
+
+#### Consumer Network
+
+The platform is private. There is no public address for the portal or the API. Users and applications reach it through a **Private Endpoint** in a virtual network (VNet) you own. You create that endpoint after the deployment finishes ([Step 6](#6-connect-your-network)).
+
+**Note**, Private Endpoints are only accepted from the subscription you deploy into. If the VNet your users connect from is in a different subscription, note that subscription ID. You pass it in the `additionalConsumerSubscriptionIds` parameter in [Step 3](#3-optional-configuration).
+
+#### DNS and TLS
+
+The platform is reached on four hostnames under a domain you own. The deployment does not create public DNS records or certificates. Have ready:
+
+- **User domain**: a DNS suffix you control. The four hostnames are created under it:
+
+  | Hostname | Used by |
+  |---|---|
+  | `fundamental-portal.<userDomain>` | Platform UI |
+  | `fundamental-api.<userDomain>` | Platform API and SDK |
+  | `fundamental-auth.<userDomain>` | Sign-in |
+  | `fundamental-grafana.<userDomain>` | Dashboards (logs and metrics) |
+
+- **TLS certificate (optional)**: the platform serves plain HTTP by default. To serve HTTPS, store a certificate in an Azure Key Vault and pass its resource ID at deploy time. The certificate must:
+  - cover `*.<userDomain>` or list all four hostnames,
+  - have an exportable private key (PKCS#8),
+  - live in a Key Vault that uses **Azure RBAC** permissions and is in the same tenant as the deployment.
+
+#### Compute Capacity
+
+The platform runs model workloads on virtual machine scale sets, one per tier. Make sure your subscription has quota in the region for the sizes you pick.
+
+| Tier | Recommended | Alternative |
+|---|---|---|
+| Model CPU | `Standard_D32s_v7` | `Standard_E32s_v7` |
+| Model GPU | `Standard_ND96isr_H200_v5` | `Standard_NC80adis_H100_v5`, `Standard_ND96isr_H100_v5` |
+| Model orchestration | `Standard_E32s_v7` | `Standard_D32s_v7` |
+| AKS user node pool | `Standard_E16as_v7` (3 to 6 nodes) | `Standard_E32as_v7` |
+
+Each tier starts with 1 instance. for zero-downtime upgrade setting, you need quota for **instance count + 1** of each size so a replacement machine can start before the old one is removed.
+
+> [!WARNING]
+> Check that the sizes you choose are offered in your region and, if you select availability zones, in those zones. GPU sizes are often only offered in some zones.
+
+### Networking
+
+The deployment creates its own VNet. You do not need to prepare one.
+
+- Address space `172.22.0.0/20`, with a separate pod range `10.244.0.0/16`.
+- Change these only if they overlap a network you plan to peer or connect from.
+- No inbound public IP is created. The only public IP is an outbound NAT gateway address, used by the platform to reach Azure managed services.
+
+### Container Images and Models
+
+You do not host or pull any images yourself. During deployment, the platform copies Fundamental's container images, charts and model files into an Azure Container Registry created inside your resource group.
+
+---
+
+## Part 2: Deploy Fundamental
+
+Work through the seven steps in order. Each step builds on the one before it.
+
+### 1. Identity Onboarding (One Time)
+
+
+Set a short name for the deployment. It becomes the prefix of every resource name, so keep it to 12 characters, lowercase letters, digits and hyphens.
+
+```bash
+export SUBSCRIPTION_ID=<your-subscription-id>
+export DEPLOYMENT_NAME=fundamental
+export LOCATION=<azure-region>
+export RG=<your-resource-group>           # existing group, or a new name such as rg-fundamental
+
+az account set --subscription "$SUBSCRIPTION_ID"
+TENANT_ID=$(az account show --query tenantId -o tsv)
+```
+
+#### A. Create the managed identity
+
+If you already have a resource group, skip this command. Otherwise create one:
+
+```bash
+az group create -n "$RG" -l "$LOCATION"
+```
+
+Then create the managed identity in that resource group:
+
+```bash
+az identity create -n "$DEPLOYMENT_NAME-fun-mi-01" -g "$RG"
+MI_RESOURCE_ID=$(az identity show -n "$DEPLOYMENT_NAME-fun-mi-01" -g "$RG" --query id -o tsv)
+MI_PRINCIPAL_ID=$(az identity show -n "$DEPLOYMENT_NAME-fun-mi-01" -g "$RG" --query principalId -o tsv)
+```
+
+The managed identity must be in the resource group you deploy into. The platform attaches it to its machines.
+
+#### B. Create the platform access app registration
+
+Fundamental grants this app registration read access to its release files. A federated credential binds it to the managed identity from Step 1A, so the platform's machines can use that access without any secret or certificate.
+
+```bash
+SKR_APP_CLIENT_ID=$(az ad app create \
+  --display-name "$DEPLOYMENT_NAME-skr-app" \
+  --sign-in-audience AzureADMultipleOrgs \
+  --query appId -o tsv)
+
+az ad sp create --id "$SKR_APP_CLIENT_ID"
+
+az ad app federated-credential create --id "$SKR_APP_CLIENT_ID" --parameters "{
+  \"name\": \"$DEPLOYMENT_NAME-fun-mi-01\",
+  \"issuer\": \"https://login.microsoftonline.com/$TENANT_ID/v2.0\",
+  \"subject\": \"$MI_PRINCIPAL_ID\",
+  \"audiences\": [\"api://AzureADTokenExchange\"]
+}"
+```
+
+#### C. Create the deployment app registration
+
+The identity running the deployment must be a multi-tenant app registration that Fundamental grant read access to.
+
+```bash
+DEPLOY_APP_CLIENT_ID=$(az ad app create \
+  --display-name "$DEPLOYMENT_NAME-deploy-app" \
+  --sign-in-audience AzureADMultipleOrgs \
+  --query appId -o tsv)
+
+DEPLOY_SP_ID=$(az ad sp create --id "$DEPLOY_APP_CLIENT_ID" --query id -o tsv)
+
+az role assignment create --assignee-object-id "$DEPLOY_SP_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role Owner \
+  --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RG"
+```
+
+Add a client secret, certificate or federated credential in the way your organization prefers. If you plan to serve HTTPS, also give this identity Owner on the Key Vault that holds your certificate.
+
+> **Note:** If you already have a multi-tenant deployment identity, reuse it and skip this step. Just make sure it has Owner on the resource group.
+
+#### D. Share your identifiers with Fundamental
+
+```bash
+echo "Tenant ID:              $TENANT_ID"
+echo "Platform access app ID: $SKR_APP_CLIENT_ID"
+echo "Deployment app ID:      $DEPLOY_APP_CLIENT_ID"
+echo "Region:                 $LOCATION"
+```
+
+> [!IMPORTANT]
+> Send all four values to your Fundamental contact and **wait for Fundamental to confirm** before you deploy. Fundamental will then send back the values you need for [Step 2](#2-required-information).
+
+---
+
+### 2. Required Information
+
+Collect these values before deploying.
+
+| Parameter | Description | Example | Notes |
+|---|---|---|---|
+| `deploymentName` | Prefix for all resource names | `fundamental` | 2 to 12 chars, lowercase letters, digits, hyphens. Same value you used in Step 1. |
+| `computeImageId` | Resource ID of the platform machine image | `/subscriptions/.../versions/2026.09.1` | Sent by Fundamental in the confirmation from Step 1D. Changes with each release. |
+| `Fundamental tenant ID` | Used only on the deploy command | `<fundamental-tenant-id>` | Sent by Fundamental in the confirmation from Step 1D. Passed as `--aux-tenants` in Step 4B. |
+| `Region` | Region of the resource group you deploy into | `eastus2` | The region you shared in Step 1D. |
+| `infraBundleVersion` | Platform bundle version | `1.7.2` | From Fundamental's release notes |
+| `appBundleVersion` | Application bundle version | `1.7.2` | From Fundamental's release notes |
+| `aksAdminGroupObjectIds` | Entra group that gets cluster admin | `["2f1c...-..."]` | Object ID of the group from the prerequisites |
+| `userDomain` | DNS suffix for the hostnames | `customer-fundamental.com` | No scheme, no wildcard |
+| `skrMiResourceId` | Managed identity from Step 1A | `/subscriptions/.../userAssignedIdentities/fundamental-fun-mi-01` | `$MI_RESOURCE_ID` |
+| `skrAppClientId` | Platform access app client ID from Step 1B | `9d3a...-...` | `$SKR_APP_CLIENT_ID` |
+
+
+Copy [`params.example.json`](./params.example.json) to `params.json` and fill in these values. The full parameter list, including every optional setting, is in the [Parameters Reference](./parameters-reference.md).
+
+> **Note:** The defaults for availability zones, capacity reservations and dedicated hosts are fine for most deployments. One exception: regions without availability zones (for example `westus`) need `"aksAvailabilityZones": []` in `params.json`.
+
+---
+
+### 3. Optional Configuration
+
+The defaults give you one CPU, one GPU and one orchestration machine, a 3 to 6 node AKS pool, HTTP endpoints and the default address space. Change them in `params.json` if you need to:
+
+| Setting | When to change it |
+|---|---|
+| Machine sizes and counts | See [Compute Tiers](./parameters-reference.md#compute-tiers). |
+| Split train and predict tiers | See [Split Tiers](./parameters-reference.md#optional-split-trainpredict-tiers). |
+| Availability zones | Your region has zones and you want zonal placement, or a GPU size is only offered in one zone. Your region has no zones: set `aksAvailabilityZones` to `[]`. |
+| Capacity reservations or dedicated hosts | You already own reserved capacity for a tier. |
+| `userCertificateKeyVaultResourceId` | You want HTTPS. See [DNS and TLS](#dns-and-tls). |
+| `additionalConsumerSubscriptionIds` | Users connect from subscriptions other than the one you deploy into. |
+| Log and metric retention | You need to keep platform logs or metrics for more than 7 days. |
+| Tags | Your organization requires tags on every resource. |
+
+---
+
+### 4. Deploy the Platform
+
+#### A. Check the prerequisites
+
+Run the prerequisite check before you deploy. It is read-only and takes about two minutes:
+
+```bash
+./preflight.sh -g "$RG" -p params.json
+```
+
+It checks the resource group, region, resource providers, identities from Step 1, the Entra group, VM size availability, quota and the TLS certificate. Fix every `FAIL` before you continue. A `SKIP` means your account lacks the permission to run that check; ask an Owner of the resource group to run the script, or verify the item yourself.
+
+If you skipped Step 1C and reuse an existing deployment identity, add `--deploy-app-id <its-client-id>` so the script checks that identity. Run `./preflight.sh -h` for all options.
+
+#### B. Deploy with the Azure CLI
+
+Fundamental provides the template file `mainTemplate.json` with each release. Put it next to your `params.json` ([template here](./parameters-reference.md#paramsjson-template-cli-deploy)).
+
+Sign in as the deployment identity from Step 1C, then start the deployment.
+
+The `<credential>` below is the client secret or certificate you added to the deployment app registration in Step 1C. For a certificate, pass the path to the PEM file. For a federated credential, replace `-p <credential>` with `--federated-token <token>`. See [Add credentials to your application](https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-credentials).
+
+```bash
+az login --service-principal -u <deployAppClientId> -p <credential> --tenant "$TENANT_ID"
+az account set --subscription "$SUBSCRIPTION_ID"
+
+az deployment group create \
+  --name fundamental \
+  --resource-group "$RG" \
+  --template-file mainTemplate.json \
+  --parameters @params.json \
+  --aux-tenants <fundamental-tenant-id> \
+  --no-wait
+```
+
+The `--aux-tenants` flag lets Azure read the machine image from Fundamental's gallery. Use the tenant ID Fundamental gave you.
+
+> **Deployment time:** 30 to 60 minutes. It only reports success once every tier is healthy.
+
+Watch progress:
+
+```bash
+az deployment group show -g "$RG" -n fundamental --query properties.provisioningState -o tsv
+```
+
+Or in the portal: **Resource groups** -> your resource group -> **Deployments** -> `fundamental`.
+
+#### C. If the deployment fails
+
+It is safe to run the same deploy command again. The deployment is incremental: resources that already exist are kept, and only missing or changed resources are created or updated. Keep the same `--name` so the new run replaces the failed deployment record.
+
+Azure does not roll back a failed deployment. Resources created before the failure stay in your resource group.
+
+1. Find the failed step. The command is in [Step 5A](#a-check-the-deployment-state).
+2. Fix the cause. The [Troubleshooting guide](./troubleshooting.md#deployment-errors) lists the common errors. If the error names a scale set, follow the steps there before you continue.
+3. Run the deploy command from Step 4B again.
+
+---
+
+### 5. Verify Deployment
+
+#### A. Check the deployment state
+
+**Using Azure Portal:**
+
+1. Open your resource group and select **Deployments**.
+2. The `fundamental` deployment shows **Succeeded**.
+
+**Using Azure CLI:**
+
+```bash
+az deployment group show -g "$RG" -n fundamental --query properties.provisioningState -o tsv
+```
+
+If it shows **Failed**, list the failed steps:
+
+```bash
+az deployment operation group list -g "$RG" -n fundamental \
+  --query "[?properties.provisioningState=='Failed'].{step:properties.targetResource.resourceName, error:properties.statusMessage.error.message}" -o table
+```
+
+#### B. Note the deployment outputs
+
+```bash
+az deployment group show -g "$RG" -n fundamental --query properties.outputs -o json
+```
+
+| Output | Use case |
+|---|---|
+| `privateLinkServiceAlias` | Target when you create your Private Endpoint (Step 6) |
+| `privateLinkServiceResourceId` | Same, if your tooling prefers a resource ID |
+| `dnsRecords` | The four hostnames you must create |
+
+---
+
+### 6. Connect Your Network
+
+#### A. Create a Private Endpoint
+
+In the VNet your users and applications connect from, create a Private Endpoint that targets the `privateLinkServiceAlias` output:
+
+```bash
+az network private-endpoint create \
+  -g <consumer-rg> -n fundamental-pe -l "$LOCATION" \
+  --vnet-name <consumer-vnet> --subnet <consumer-subnet> \
+  --private-connection-resource-id "<privateLinkServiceResourceId>" \
+  --connection-name fundamental \
+  --manual-request false
+```
+
+The connection is approved automatically when the subscription is in `consumerSubscriptionIds`. Note the endpoint's private IP.
+
+```bash
+PE_NIC_ID=$(az network private-endpoint show -g <consumer-rg> -n fundamental-pe \
+  --query "networkInterfaces[0].id" -o tsv)
+az network nic show --ids "$PE_NIC_ID" \
+  --query "ipConfigurations[0].privateIPAddress" -o tsv
+```
+
+#### B. Create the DNS records
+
+In the DNS your users resolve, create **A records** for the four names in the `dnsRecords` output, all pointing at the Private Endpoint IP. A single wildcard record `*.<userDomain>` also works.
+
+If you use an Azure Private DNS zone for `<userDomain>`, link it to the consumer VNet and add the records there.
+
+---
+
+### 7. First Login
+
+From a machine inside the connected network, open `<scheme>://fundamental-portal.<userDomain>`.
+
+Sign in as `admin` with the password `admin`. You are asked to set a new password immediately; the initial one is temporary and stops working once you change it.
+
+Use the portal to create API keys and invite the rest of your team.
+
+---
+
+## Part 3: Connect Your Application
+
+The platform API is served at `<scheme>://fundamental-api.<userDomain>`. It is reachable only from networks that can reach your Private Endpoint.
+
+1. In the portal, create an API key for your application.
+2. Install the Fundamental SDK using the package index and token Fundamental provides.
+3. Point the client at your API:
+
+---
+
+## Troubleshooting
+
+If a deployment fails or you cannot reach the platform, see the [Troubleshooting guide](./troubleshooting.md).
+
+Once your network is connected ([Step 6](#6-connect-your-network)), open `<scheme>://fundamental-grafana.<userDomain>`. It has ready-to-use dashboards for platform logs and metrics. Use them to troubleshoot a tier that is unhealthy or a workload that fails.
+
+---
+
+## Removing the Platform
+
+Delete the resource group:
+
+```bash
+az group delete -n "$RG" --yes --no-wait
+```
+
+Before you do, note:
+
+- The platform Key Vault keeps its name reserved for 90 days after deletion. If you redeploy within 90 days, use a different `deploymentName`, or purge the vault first if your policy allows it.
+- The managed identity from Step 1A lives in the same resource group and is deleted with it. If you redeploy later, repeat Step 1 and send Fundamental the new IDs.
+- Your Private Endpoint and DNS records live in your own network and must be removed separately.
+- Capacity reservation groups, dedicated host groups and your certificate Key Vault are never changed or deleted by the platform.
