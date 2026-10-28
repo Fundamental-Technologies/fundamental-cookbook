@@ -166,8 +166,17 @@ fi
 if [ -n "$RG_LOCATION" ] && [ "$RG_LOCATION" != "$LOCATION" ]; then
   warn "Resource group is in $RG_LOCATION but you deploy to $LOCATION." "Fundamental replicates the machine image to the region you shared in Step 1D. Make sure it is $LOCATION."
 fi
+REGION_ZONES=""; REGION_ZONES_KNOWN=0
 if run_az account list-locations --query "[?name=='$LOCATION'] | length(@)" -o tsv && [ "$AZ_OUT" = "1" ]; then
   pass "Region '$LOCATION' is valid for this subscription."
+  if run_az account list-locations --query "[?name=='$LOCATION'].availabilityZoneMappings[].logicalZone" -o tsv; then
+    REGION_ZONES_KNOWN=1; REGION_ZONES=$(printf '%s' "$AZ_OUT" | tr '\n' ' ' | sed 's/ *$//')
+    if [ -n "$REGION_ZONES" ]; then
+      info "Region '$LOCATION' has availability zones: $REGION_ZONES."
+    else
+      info "Region '$LOCATION' has no availability zones. Every zone list must be [] (aksAvailabilityZones defaults to [\"1\",\"2\"])."
+    fi
+  fi
 else
   fail "Region '$LOCATION' is not a valid region name." "Use the short name, for example eastus2. List: az account list-locations -o table"
 fi
@@ -287,7 +296,7 @@ fi
 if [ "$DEPLOY_APP_ID" = "__skip__" ]; then
   skip "Deployment app registration '$DEPLOY_APP_NAME' exists and is Owner on '$RG'" "permission to read app registrations in Microsoft Entra"
 elif [ -z "$DEPLOY_APP_ID" ]; then
-  fail "App registration '$DEPLOY_APP_NAME' was not found." "Create it (Step 1C). If you reuse another identity, pass --deploy-app-id <client-id>."
+  fail "App registration '$DEPLOY_APP_NAME' was not found." "Create it (Step 1C). If you reuse an existing deployment identity, pass --deploy-app-id <its-client-id>."
 else
   if run_az ad sp show --id "$DEPLOY_APP_ID" --query id -o tsv; then
     DEPLOY_SP_ID="$AZ_OUT"
@@ -341,23 +350,25 @@ SURGE=$(pval enableSurgeUpgrade true)
 EXTRA=1; [ "$SURGE" = "false" ] && EXTRA=0
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 
-# Tiers: "<label>|<size>|<instances>|<zones>"
+# Tiers: "<label>|<size>|<instances>|<zones>|<zones parameter name>"
 TIERS=""
-add_tier() { TIERS="${TIERS}$1|$2|$3|$4"$'\n'; }
+add_tier() { TIERS="${TIERS}$1|$2|$3|$4|$5"$'\n'; }
 if [ "$(pval modelCpuLayout combined)" = "split" ]; then
-  add_tier "Model CPU train"   "$(pval modelCpuTrainVmSize Standard_D32s_v7)"   "$(( $(pval modelCpuTrainInstanceCount 1) + EXTRA ))"   "$(parr modelCpuTrainZones "")"
-  add_tier "Model CPU predict" "$(pval modelCpuPredictVmSize Standard_D32s_v7)" "$(( $(pval modelCpuPredictInstanceCount 1) + EXTRA ))" "$(parr modelCpuPredictZones "")"
+  add_tier "Model CPU train"   "$(pval modelCpuTrainVmSize Standard_D192s_v7)"   "$(( $(pval modelCpuTrainInstanceCount 1) + EXTRA ))"   "$(parr modelCpuZones "")" modelCpuZones
+  add_tier "Model CPU predict" "$(pval modelCpuPredictVmSize Standard_D192s_v7)" "$(( $(pval modelCpuPredictInstanceCount 1) + EXTRA ))" "$(parr modelCpuZones "")" modelCpuZones
 else
-  add_tier "Model CPU" "$(pval modelCpuVmSize Standard_D32s_v7)" "$(( $(pval modelCpuInstanceCount 1) + EXTRA ))" "$(parr modelCpuZones "")"
+  add_tier "Model CPU" "$(pval modelCpuVmSize Standard_D192s_v7)" "$(( $(pval modelCpuInstanceCount 1) + EXTRA ))" "$(parr modelCpuZones "")" modelCpuZones
 fi
 if [ "$(pval modelGpuLayout combined)" = "split" ]; then
-  add_tier "Model GPU train"   "$(pval modelGpuTrainVmSize Standard_NC40ads_H100_v5)"   "$(( $(pval modelGpuTrainInstanceCount 1) + EXTRA ))"   "$(parr modelGpuTrainZones "")"
-  add_tier "Model GPU predict" "$(pval modelGpuPredictVmSize Standard_NC40ads_H100_v5)" "$(( $(pval modelGpuPredictInstanceCount 1) + EXTRA ))" "$(parr modelGpuPredictZones "")"
+  add_tier "Model GPU train"   "$(pval modelGpuTrainVmSize Standard_ND96isr_H200_v5)"   "$(( $(pval modelGpuTrainInstanceCount 1) + EXTRA ))"   "$(parr modelGpuZones "")" modelGpuZones
+  add_tier "Model GPU predict" "$(pval modelGpuPredictVmSize Standard_ND96isr_H200_v5)" "$(( $(pval modelGpuPredictInstanceCount 1) + EXTRA ))" "$(parr modelGpuZones "")" modelGpuZones
 else
-  add_tier "Model GPU" "$(pval modelGpuVmSize Standard_NC40ads_H100_v5)" "$(( $(pval modelGpuInstanceCount 1) + EXTRA ))" "$(parr modelGpuZones "")"
+  add_tier "Model GPU" "$(pval modelGpuVmSize Standard_ND96isr_H200_v5)" "$(( $(pval modelGpuInstanceCount 1) + EXTRA ))" "$(parr modelGpuZones "")" modelGpuZones
 fi
-add_tier "Model orchestration" "$(pval modelOrchestrationVmSize Standard_E32s_v7)" "$(( $(pval modelOrchestrationInstanceCount 1) + EXTRA ))" "$(parr modelOrchestrationZones "")"
-add_tier "AKS user node pool"  "$(pval aksUserNodeVmSize Standard_E16as_v7)" "$(pval aksUserNodeMax 6)" "$(parr aksAvailabilityZones "1 2")"
+add_tier "Model orchestration" "$(pval modelOrchestrationVmSize Standard_E32s_v7)" "$(( $(pval modelOrchestrationInstanceCount 1) + EXTRA ))" "$(parr modelOrchestrationZones "")" modelOrchestrationZones
+# The AKS pool starts at its minimum, so quota is checked for that, floored at 3 nodes.
+AKS_NODES=$(pval aksUserNodeMin 3); [ "$AKS_NODES" -gt 3 ] 2>/dev/null || AKS_NODES=3
+add_tier "AKS user node pool"  "$(pval aksUserNodeVmSize Standard_E16as_v7)" "$AKS_NODES" "$(parr aksAvailabilityZones "1 2")" aksAvailabilityZones
 [ "$EXTRA" = 1 ] && info "Surge upgrades are on: each model tier needs quota for instance count + 1."
 
 # One SKU lookup for every size. Lines: "name family vcpu offeredZones restrictedZones locationRestricted". "-" means empty.
@@ -385,7 +396,7 @@ fi
 
 NEEDS=""   # "family vcpus" lines
 TOTAL_NEED=0
-while IFS='|' read -r label size count zones; do
+while IFS='|' read -r label size count zones zparam; do
   [ -n "$label" ] || continue
   read -r family vcpu offered restricted locrestr <<<"$(sku_info "$size")"
   case "$family" in
@@ -396,20 +407,25 @@ while IFS='|' read -r label size count zones; do
   if [ "${locrestr:-0}" != "0" ]; then
     fail "$label: size $size is restricted for this subscription in $LOCATION." "Request access or pick another size: az vm list-skus -l $LOCATION --size $size -o table"; continue
   fi
-  zone_msg=""
+  # The size is offered regionally, so count its quota even if the zone check fails below.
+  zone_msg=""; zone_ok=1
   if [ -n "$zones" ]; then
-    missing=""
-    for z in $zones; do
-      printf ',%s,' "$offered" | grep -q ",$z," || missing="$missing $z"
-      printf ',%s,' "$restricted" | grep -q ",$z," && missing="$missing $z"
-    done
-    if [ -n "$missing" ]; then
-      [ "$offered" = "-" ] && offered="none"
-      fail "$label: size $size is not offered in zone(s)$missing of $LOCATION." "Offered zones: $offered. Change the zones for this tier, or set [] for regional placement."; continue
+    if [ "$REGION_ZONES_KNOWN" = 1 ] && [ -z "$REGION_ZONES" ]; then
+      fail "$label: zone(s)$(printf ' %s' $zones) requested, but region $LOCATION has no availability zones." "Set $zparam to [] in params.json for regional placement."; zone_ok=0
+    else
+      missing=""
+      for z in $zones; do
+        printf ',%s,' "$offered" | grep -q ",$z," || missing="$missing $z"
+        printf ',%s,' "$restricted" | grep -q ",$z," && missing="$missing $z"
+      done
+      if [ -n "$missing" ]; then
+        [ "$offered" = "-" ] && offered="none"
+        fail "$label: size $size is not offered in zone(s)$missing of $LOCATION." "Offered zones: $offered. Change $zparam, or set it to [] for regional placement."; zone_ok=0
+      fi
     fi
     zone_msg=" in zone(s) $zones"
   fi
-  pass "$label: $size x $count is offered in $LOCATION$zone_msg."
+  [ "$zone_ok" = 1 ] && pass "$label: $size x $count is offered in $LOCATION$zone_msg."
   need=$(( count * vcpu ))
   NEEDS="${NEEDS}$family $need"$'\n'
   TOTAL_NEED=$(( TOTAL_NEED + need ))
@@ -499,7 +515,7 @@ fi
 
 # ---------------------------------------------------------------- 8. Not checked by this script
 section "Confirm yourself"
-info "Fundamental confirmed your app IDs and region (Step 1D) and sent you computeImageId and the versions."
+info "Fundamental confirmed your tenant ID, app IDs and region (Step 1D) and sent you computeImageId and the versions."
 info "Address spaces 172.22.0.0/20 and 10.244.0.0/16 do not overlap a network you will peer or connect from."
 info "You own DNS for userDomain and can create four A records after the deployment."
 
