@@ -492,6 +492,15 @@ class Preflight:
             sys.exit(1)
         self.token = token.out.strip()
         r.ok(f"Signed in as {self.account}.")
+        adc = gc.run("auth", "application-default", "print-access-token")
+        if adc.ok:
+            r.ok("Application Default Credentials are present.")
+        else:
+            r.fail(
+                "No Application Default Credentials.",
+                "Terraform reads them to act as the deployer service account. Sign in once more:",
+                "gcloud auth application-default login",
+            )
         config_project = gc.run("config", "get-value", "project").out.strip()
         if not self.project_id:
             self.project_id = config_project
@@ -1163,8 +1172,8 @@ def parse_args(argv: list) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="preflight.py",
         description="Checks that your Google Cloud project is ready for the Fundamental Platform. The script is read-only.",
-        epilog="Examples:\n  python3 preflight.py -p my-project -s fundamental-deployer@my-project.iam.gserviceaccount.com\n"
-        "  python3 preflight.py -t terraform/my-deployment.tfvars",
+        epilog="Examples:\n  python3 preflight.py -t terraform/my-deployment.tfvars\n"
+        "  python3 preflight.py -p my-project -s fundamental-deployer@my-project.iam.gserviceaccount.com",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -1178,8 +1187,9 @@ def parse_args(argv: list) -> argparse.Namespace:
     )
     parser.add_argument(
         "-t", "--tfvars", metavar="<file>", default="",
-        help="Your terraform/<name>.tfvars. Enables exact checks for region, zones, bundle, image, "
-        "existing network and customer exposure. Without it the template defaults are checked.",
+        help="Your terraform/<name>.tfvars, the recommended way to run the check. It supplies the project and the deployer "
+        "account and enables exact checks for region, zones, bundle, image, existing network and customer exposure. "
+        "Without it the template defaults are checked.",
     )
     return parser.parse_args(argv)
 
