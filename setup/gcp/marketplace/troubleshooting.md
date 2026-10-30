@@ -18,6 +18,20 @@ The run is idempotent: fix the cause and run the same command again.
 
 ## Deployment errors
 
+### "could not find default credentials"
+
+**Symptom:** the first `terraform plan` stops with `google: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc`.
+
+**Cause:** Terraform's Google provider does not use the `gcloud auth login` session. It reads Application Default Credentials and uses them as the source identity to act as `deployer_service_account`.
+
+**Fix:**
+
+```bash
+gcloud auth application-default login
+```
+
+Run the deploy script again. The prerequisite check reports missing credentials under "gcloud and sign-in".
+
 ### "local state still holds resources"
 
 **Symptom:** the script stops right away with `local state still holds resources: terraform/terraform.tfstate`.

@@ -106,10 +106,9 @@ To deploy into a network you already own, set `existing_network` instead ([Param
 
 ### DNS and TLS
 
-How users and applications reach the platform depends on customer exposure (`customer_exposure_enabled`):
+Users and applications reach the platform through customer exposure (`customer_exposure_enabled`): the platform publishes the portal, API, sign-in and dashboards over Private Service Connect under a domain you own. You create a PSC endpoint in one of your VPCs and point your DNS at it ([Step 7](#7-connect-your-network)). Most deployments turn it on.
 
-- With customer exposure off, the default, the platform is reachable only inside the deployment VPC and only over plain HTTP. It answers on fixed private names under `ftm-int.net`: `fundamental-portal.ftm-int.net`, `fundamental-api.ftm-int.net`, `fundamental-keycloak.ftm-int.net` and `fundamental-grafana.ftm-int.net`.
-- With customer exposure on, the platform publishes the portal, API, sign-in and dashboards over Private Service Connect under a domain you own. You create a PSC endpoint in one of your VPCs and point your DNS at it ([Step 7](#7-connect-your-network)).
+Without customer exposure the platform has no entry point for users. Its services talk to each other over internal names inside the deployment VPC, and an administrator can reach them from a local machine over a port forward ([Step 7](#without-customer-exposure)). That is enough to verify an installation, not to serve users.
 
 With customer exposure on, have these ready:
 
@@ -168,7 +167,7 @@ gcloud iam service-accounts add-iam-policy-binding "$DEPLOYER" --project "$PROJE
 Give every colleague who will run the deployment the same Token Creator binding. A new binding takes about a minute to take effect.
 
 > [!IMPORTANT]
-> Send the project ID, the project number and the region to your Fundamental contact, and wait for their confirmation before you deploy. Fundamental also names the `bundle_version` and `hardened_image` you need in [Step 4](#4-configure-the-deployment).
+> Send the project ID, the project number and the region to your Fundamental contact, and wait for their confirmation before you deploy. Fundamental also names the `bundle_version` and `hardened_image` you need in [Step 3](#3-configure-the-deployment).
 
 ---
 
@@ -186,29 +185,16 @@ Install the [tools](#tools), sign in and set the project:
 
 ```bash
 gcloud auth login
+gcloud auth application-default login
 gcloud config set project "$PROJECT_ID"
 gcloud components install gke-gcloud-auth-plugin
 ```
 
----
-
-### 3. Run the prerequisite check
-
-Copy [`preflight.py`](./preflight.py) from this folder into `cloud/gcp` and run it. It is read-only and needs only Python 3.8 or newer and `gcloud`.
-
-```bash
-python3 preflight.py -p "$PROJECT_ID" -s "$DEPLOYER"
-```
-
-If a [required API](#required-apis) is off, the script stops there. Enable the APIs with the command it prints, wait a minute and run it again. From the deployer service account check on, every check runs as that account, so the results describe the identity that will deploy.
-
-Once your tfvars file exists ([Step 4](#4-configure-the-deployment)), run it again with `-t terraform/<name>.tfvars`. It then checks the exact region, zones, bundle, image, network and certificate you configured, and takes the deployer account from the file.
-
-The script checks the project, billing, APIs, the deployer account and its permissions, local tools, the onboarding grants, zones, organization policies and the network. It does not check compute capacity, and points you to the documentation page for that instead. Fix every `FAIL` before you continue. A `SKIP` means the account running the check lacks the permission for it. Ask a project owner to run the script, or verify the item yourself. Run `python3 preflight.py -h` for all options.
+The second sign-in writes Application Default Credentials. Terraform reads those, not the `gcloud auth login` session, to act as the deployer service account. Without them the deploy script stops with `could not find default credentials`.
 
 ---
 
-### 4. Configure the deployment
+### 3. Configure the deployment
 
 One file configures a deployment: `terraform/<name>.tfvars`. Start from the example:
 
@@ -225,21 +211,41 @@ You must set four values:
 | `bundle_version` | The release bundle, as `X.Y.Z` | `1.0.2` |
 | `hardened_image` | The sealed-tier boot image Fundamental named for the release | `projects/fundamental-public/global/images/fun-gce-secure-0-1-0` |
 
-The example lists every other setting commented out, with its default. The settings most deployments change:
+Then decide these for every deployment. They have defaults, but the defaults are rarely what you want:
+
+| Setting | Decide |
+|---|---|
+| `region`, `zones` | The region you shared during onboarding and every zone of it you want the tiers spread over. The default is `us-west1` with two zones. Changing a tier's zones later replaces its instance group. |
+| `customer_exposure_enabled` with `edge_*`, `exposed_apps` and `allowed_consumer_projects` | How users reach the platform ([DNS and TLS](#dns-and-tls)). Prepare the values now and keep `customer_exposure_enabled = false` for the first run; [Step 7](#7-connect-your-network) switches it on. Off, the platform has no entry point for users. |
+| `modelgpu.machine_type`, `modelgpu.zones`, `modelgpu.region` | The GPU shape, the zones that offer it, and another region when GPU capacity is elsewhere. See [Compute capacity](#compute-capacity). |
+
+The example lists every other setting commented out, with its default. The ones deployments change most:
 
 | Setting | When to change it |
 |---|---|
-| `region`, `zones` | Your region. List every zone of the region you want the tiers spread over; changing a tier's zones later replaces its instance group. |
-| `modelgpu.machine_type`, `modelgpu.zones` | The GPU shape and the zones that offer it. See [Compute capacity](#compute-capacity). |
-| `modelgpu.region` | The GPU tier runs in a different region from the rest of the platform. |
 | `modelcpu.machine_type` | A bigger Model CPU machine. See [Compute capacity](#compute-capacity). |
 | `vpc_cidr` and the subnet ranges | The defaults overlap a network you will connect from. |
 | `existing_network` | You deploy into a VPC you already own. |
-| `customer_exposure_enabled` and the `edge_*`, `exposed_apps`, `allowed_consumer_projects` settings | Users reach the platform from outside the deployment VPC. See [DNS and TLS](#dns-and-tls) and the note in [Step 7](#7-connect-your-network). |
 | `storage_location` | Your buckets and key ring should live somewhere other than the `US` multi-region. |
 | `retain_volumes` | Database and metrics disks should survive an uninstall. |
 
 The [Parameters Reference](./parameters-reference.md) has the full list. The file stays on your machine. It is not part of the package and holds nothing secret.
+
+---
+
+### 4. Run the prerequisite check
+
+Copy [`preflight.py`](./preflight.py) from this folder into `cloud/gcp` and run it against your tfvars file. It is read-only and needs only Python 3.8 or newer and `gcloud`.
+
+```bash
+python3 preflight.py -t terraform/my-deployment.tfvars
+```
+
+It takes the project, the deployer service account, region, zones, bundle, image, network and exposure settings from the file and checks the project, billing, APIs, the deployer account and its permissions, local tools, the onboarding grants, zones, organization policies and the network. It does not check compute capacity, and points you to the documentation page for that instead.
+
+If a [required API](#required-apis) is off, the script stops there. Enable the APIs with the command it prints, wait a minute and run it again. From the deployer service account check on, every check runs as that account, so the results describe the identity that will deploy.
+
+Fix every `FAIL` before you continue. A `SKIP` means the account running the check lacks the permission for it. Ask a project owner to run the script, or verify the item yourself. Run `python3 preflight.py -h` for all options.
 
 ---
 
@@ -294,14 +300,14 @@ terraform -chdir=terraform output
 
 ### 7. Connect your network
 
-With customer exposure off, the platform answers only inside the deployment VPC, over HTTP. The names it answers on are in the `internal_hostnames` output. For access from your own network, turn customer exposure on.
+#### With customer exposure
 
-With customer exposure on, the edge publishes a Private Service Connect service attachment. Connect to it from the consumer project you listed in `allowed_consumer_projects`.
+The edge publishes a Private Service Connect service attachment. Connect to it from the consumer project you listed in `allowed_consumer_projects`.
 
 > [!NOTE]
 > Turn customer exposure on in a second run. The edge looks up the apps' network endpoint groups, which exist only once the first run has installed the charts. Deploy with exposure off first, then set `customer_exposure_enabled = true` with the `edge_*`, `exposed_apps` and `allowed_consumer_projects` settings and run `deploy.sh` again. 
 
-#### A. Create a PSC endpoint
+**A. Create a PSC endpoint**
 
 In the VPC your users and applications connect from, in the deployment region:
 
@@ -324,17 +330,35 @@ gcloud compute forwarding-rules describe fundamental-psc \
 
 The connection shows `ACCEPTED` when the consumer project is in `allowed_consumer_projects`. Note the IP address.
 
-#### B. Create the DNS records
+**B. Create the DNS records**
 
 In the DNS your users resolve, create A records for the hostnames in the `customer_exposure` output, all pointing at the endpoint's IP. A single wildcard record `*.<your-domain>` also works.
 
 If you use a Cloud DNS private zone for `<your-domain>`, attach it to the consumer VPC and add the records there.
 
+#### Without customer exposure
+
+The platform has no entry point for users. To verify the installation or administer it from your machine, forward the platform's ingress to your machine and let the internal names resolve to it. The names are in the `internal_hostnames` output and all point at one ingress, so one forward covers the portal, the API, sign-in and the dashboards.
+
+```bash
+terraform -chdir=terraform output -json internal_hostnames
+
+# 1. Resolve the application names locally.
+echo "127.0.0.1 fundamental-portal.ftm-int.net fundamental-api.ftm-int.net fundamental-keycloak.ftm-int.net fundamental-grafana.ftm-int.net" | sudo tee -a /etc/hosts
+
+# 2. Find the ingress Service and forward it to local port 80. Root, because the port is privileged;
+#    the environment is kept so kubectl finds your kubeconfig and gcloud.
+kubectl --context "$KUBE_CONTEXT" get svc -A -l app.kubernetes.io/name=traefik
+sudo -E env "PATH=$PATH" kubectl --context "$KUBE_CONTEXT" -n <namespace> port-forward --address 127.0.0.1 svc/<traefik-service> 80:80
+```
+
+While the forward runs, `http://fundamental-portal.ftm-int.net` opens the portal and `http://fundamental-api.ftm-int.net` is the API address for the SDK. Sign-in redirects stay on these names without a port, which is why the forward listens on port 80. Remove the `/etc/hosts` line when you are done. This is an administrator's path, not a way to serve users.
+
 ---
 
 ### 8. First login
 
-From a machine inside the connected network, open `<scheme>://fundamental-portal.<your-domain>` (`https` when you set `edge_certificate_id`, `http` otherwise). Without customer exposure, open `http://fundamental-portal.ftm-int.net` from inside the deployment VPC.
+From a machine inside the connected network, open `<scheme>://fundamental-portal.<your-domain>` (`https` when you set `edge_certificate_id`, `http` otherwise). Without customer exposure, open `http://fundamental-portal.ftm-int.net` through the port forward from [Step 7](#without-customer-exposure).
 
 Sign in as `admin` with the password `admin`. The portal asks you to set a new password straight away. The initial one is temporary and stops working once you change it.
 
@@ -344,7 +368,7 @@ Use the portal to create API keys and invite the rest of your team.
 
 ## Part 3: Connect your application
 
-The platform API is at `<scheme>://fundamental-api.<your-domain>` (or `http://fundamental-api.ftm-int.net` inside the deployment VPC). Only networks with a route to your PSC endpoint can reach it.
+The platform API is at `<scheme>://fundamental-api.<your-domain>`. Only networks with a route to your PSC endpoint can reach it. Without customer exposure it is `http://fundamental-api.ftm-int.net` through the port forward from [Step 7](#without-customer-exposure).
 
 1. In the portal, create an API key for your application.
 2. Install the Fundamental SDK using the package index and token Fundamental provides.
