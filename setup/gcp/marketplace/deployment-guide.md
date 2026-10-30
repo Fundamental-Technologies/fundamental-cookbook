@@ -4,8 +4,6 @@
 
 ### Architecture
 
-![Fundamental Platform on Google Cloud](images/gcp-high-level.png)
-
 Everything runs in a VPC in your project, with no public addresses and no internet egress. A private GKE cluster hosts the platform services: API, portal, sign-in, queues, workflow engine and dashboards. The model workloads run next to it on sealed Shielded VM tiers: the model controller, the orchestration workers and the GPU inference server. Each sealed VM attests itself to Fundamental's attestation broker over Private Service Connect before it receives the key for its encrypted release. To check that attestation, the broker reads the VM's shielded identity through the Compute Engine API in your project. That is the single permission Fundamental holds in your project, granted by the deployment to the broker's service account ([Prerequisites](#google-cloud-project)). The release and the container images come from Fundamental's buckets over Private Google Access. Your data stays in buckets, disks and secrets in your project under your own KMS keys. Users and applications reach the platform through an optional edge load balancer, published over Private Service Connect under your own domain ([DNS and TLS](#dns-and-tls)).
 
 ### Prerequisites
