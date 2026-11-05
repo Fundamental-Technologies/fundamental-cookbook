@@ -30,9 +30,12 @@ CONSUMER="${CONSUMER:-1}"
 RELAY_SUBNET="${RELAY_SUBNET:-}"
 INSTANCE_TYPE="${INSTANCE_TYPE:-t4g.micro}"
 
-ROLE_NAME="fundamental-tunnel-ssm"
+# IAM is global, so the role is per stack and region: `down` in one region never
+# breaks a tunnel in another.
+ROLE_NAME="fundamental-portal-tunnel-${STACK_NAME}-${REGION}"
+ROLE_NAME="${ROLE_NAME:0:64}"
 SG_NAME="fundamental-portal-tunnel-sg"
-TAG_KEY="fundamental-tunnel"
+TAG_KEY="fundamental-portal-tunnel"
 HOSTS_MARK="fundamental-portal-tunnel ${STACK_NAME}"
 
 usage() { sed -n '6,12p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
@@ -42,7 +45,7 @@ awsr() { aws --region "${REGION}" "$@"; }
 case "${CMD}" in up|status|down) ;; *) usage ;; esac
 [ -n "${REGION}" ] || die "set the region (arg 2, or AWS_REGION)"
 command -v aws >/dev/null || die "install the AWS CLI v2"
-aws sts get-caller-identity >/dev/null || die "no valid AWS credentials (set AWS_PROFILE; run 'aws sso login' if expired)"
+awsr sts get-caller-identity >/dev/null || die "no valid AWS credentials (set AWS_PROFILE; run 'aws sso login' if expired)"
 
 # ------------------------------------------------------------------------------
 # Deployment discovery: hostnames and PrivateLink endpoint from the stack
@@ -60,6 +63,8 @@ discover() {
   ENDPOINT_ID=$(output ApiEndpointId)
   ENDPOINT_DNS=$(output ApiEndpointDnsName)
   PORTAL_HOST=$(output PortalHostName)
+  [ -n "${ENDPOINT_ID}" ] && [ -n "${ENDPOINT_DNS}" ] \
+    || die "stack ${STACK_NAME} has no PrivateLink endpoint outputs; this script needs a deployment with the consumer VPC endpoint"
   BASE_DOMAIN="${PORTAL_HOST#fundamental-portal.}"
   [ -n "${BASE_DOMAIN}" ] || die "the deployment has no BaseDomain; the portal needs one"
   HOSTS="fundamental-api.${BASE_DOMAIN} fundamental-portal.${BASE_DOMAIN} fundamental-keycloak.${BASE_DOMAIN} fundamental-grafana.${BASE_DOMAIN}"
@@ -88,7 +93,7 @@ discover() {
 
 find_relay() {
   awsr ec2 describe-instances \
-    --filters "Name=tag-key,Values=${TAG_KEY}" "Name=vpc-id,Values=${VPC_ID}" "Name=instance-state-name,Values=pending,running" \
+    --filters "Name=tag:${TAG_KEY},Values=${STACK_NAME}" "Name=vpc-id,Values=${VPC_ID}" "Name=instance-state-name,Values=pending,running" \
     --query 'Reservations[].Instances[0].InstanceId | [0]' --output text
 }
 
@@ -98,12 +103,9 @@ ssm_ping() {
 }
 
 hosts_remove() {
-  grep -qF "${HOSTS_MARK}" /etc/hosts || grep -qE '^127\.0\.0\.1 fundamental-api\.' /etc/hosts || return 0
+  grep -qF "${HOSTS_MARK}" /etc/hosts || return 0
   echo "   Removing the platform hostnames from /etc/hosts (sudo)..."
-  # Also drops the unmarked line older versions of this script wrote.
-  sudo sed -i.fundamental-tunnel.bak \
-    -e "/^# >>> ${HOSTS_MARK}\$/,/^# <<< ${HOSTS_MARK}\$/d" \
-    -e '/^127\.0\.0\.1 fundamental-api\..* fundamental-portal\./d' /etc/hosts
+  sudo sed -i.fundamental-tunnel.bak "/^# >>> ${HOSTS_MARK}\$/,/^# <<< ${HOSTS_MARK}\$/d" /etc/hosts
   flush_dns
 }
 
@@ -133,7 +135,7 @@ fi
 if [ "${CMD}" = "down" ]; then
   echo "1. Terminating relay instances..."
   IIDS=$(awsr ec2 describe-instances --query 'Reservations[].Instances[].InstanceId' --output text \
-    --filters "Name=tag-key,Values=${TAG_KEY}" "Name=instance-state-name,Values=pending,running,stopping,stopped")
+    --filters "Name=tag:${TAG_KEY},Values=${STACK_NAME}" "Name=instance-state-name,Values=pending,running,stopping,stopped")
   if [ -n "${IIDS}" ]; then
     echo "   ${IIDS}"
     # shellcheck disable=SC2086
@@ -145,10 +147,12 @@ if [ "${CMD}" = "down" ]; then
   echo "2. Deleting the relay security group..."
   for SG_ID in $(awsr ec2 describe-security-groups --filters "Name=group-name,Values=${SG_NAME}" \
       --query 'SecurityGroups[].GroupId' --output text); do
+    DELETED=""
     for _ in 1 2 3 4 5 6; do
-      awsr ec2 delete-security-group --group-id "${SG_ID}" 2>/dev/null && break
+      awsr ec2 delete-security-group --group-id "${SG_ID}" 2>/dev/null && { DELETED=1; break; }
       sleep 10
     done
+    [ -n "${DELETED}" ] || echo "   WARN: ${SG_ID} is still in use; delete it later from the EC2 console"
   done
 
   echo "3. Deleting the instance profile and role..."
@@ -183,6 +187,8 @@ echo "Fundamental Platform - Portal Tunnel"
 echo "  Stack:  ${STACK_NAME}"
 echo "  Region: ${REGION}"
 echo "=============================================="
+echo "Port 443 and /etc/hosts need root; sudo may ask for your password."
+sudo -v
 
 echo ""
 echo "1. Reading the deployment..."
@@ -216,11 +222,12 @@ if [ "${SG_ID}" = "None" ]; then
     --description "Fundamental portal tunnel relay (SSM port-forward)" \
     --tag-specifications "ResourceType=security-group,Tags=[{Key=Name,Value=${SG_NAME}},{Key=Platform,Value=fundamental}]" \
     --query GroupId --output text)
-  awsr ec2 revoke-security-group-egress --group-id "${SG_ID}" \
-    --ip-permissions '[{"IpProtocol":"-1","IpRanges":[{"CidrIp":"0.0.0.0/0"}]}]' >/dev/null
-  awsr ec2 authorize-security-group-egress --group-id "${SG_ID}" \
-    --ip-permissions '[{"IpProtocol":"tcp","FromPort":443,"ToPort":443,"IpRanges":[{"CidrIp":"0.0.0.0/0","Description":"SSM and the platform endpoint"}]}]' >/dev/null
 fi
+# Replace the default allow-all egress with 443 only. Both calls are no-ops on re-runs.
+awsr ec2 revoke-security-group-egress --group-id "${SG_ID}" \
+  --ip-permissions '[{"IpProtocol":"-1","IpRanges":[{"CidrIp":"0.0.0.0/0"}]}]' >/dev/null 2>&1 || true
+awsr ec2 authorize-security-group-egress --group-id "${SG_ID}" \
+  --ip-permissions '[{"IpProtocol":"tcp","FromPort":443,"ToPort":443,"IpRanges":[{"CidrIp":"0.0.0.0/0","Description":"SSM and the platform endpoint"}]}]' >/dev/null 2>&1 || true
 echo "   ${SG_ID}"
 
 echo ""
@@ -232,18 +239,21 @@ if [ "${IID}" = "None" ]; then
   AMI=$(awsr ssm get-parameter --name "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-${ARCH}" \
     --query Parameter.Value --output text)
   # A new instance profile takes a few seconds to become usable by EC2.
-  for attempt in 1 2 3 4 5 6; do
-    IID=$(awsr ec2 run-instances --image-id "${AMI}" --instance-type "${INSTANCE_TYPE}" \
+  for attempt in 1 2 3 4 5 6 7 8; do
+    if OUT=$(awsr ec2 run-instances --image-id "${AMI}" --instance-type "${INSTANCE_TYPE}" \
       --subnet-id "${RELAY_SUBNET}" --security-group-ids "${SG_ID}" "${PUBLIC_IP}" \
       --iam-instance-profile "Name=${ROLE_NAME}" \
       --metadata-options 'HttpTokens=required,HttpEndpoint=enabled' \
       --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=fundamental-portal-tunnel},{Key=${TAG_KEY},Value=${STACK_NAME}},{Key=Platform,Value=fundamental}]" \
-      --query 'Instances[0].InstanceId' --output text 2>/dev/null || true)
-    case "${IID}" in i-*) break ;; esac
-    echo "   instance profile not ready yet, retrying (${attempt}/6)..."
-    sleep 5
+      --query 'Instances[0].InstanceId' --output text 2>&1); then
+      IID="${OUT}"; break
+    fi
+    case "${OUT}" in
+      *iamInstanceProfile*) echo "   instance profile not ready yet, retrying (${attempt}/8)..."; sleep 5 ;;
+      *) die "could not launch the relay in ${RELAY_SUBNET} (set INSTANCE_TYPE or RELAY_SUBNET to try another): ${OUT}" ;;
+    esac
   done
-  case "${IID}" in i-*) ;; *) die "could not launch the relay in ${RELAY_SUBNET}; try another INSTANCE_TYPE or RELAY_SUBNET" ;; esac
+  case "${IID}" in i-*) ;; *) die "the relay's instance profile never became usable; re-run in a minute" ;; esac
 fi
 echo "   ${IID}"
 
@@ -258,6 +268,7 @@ done
 
 echo ""
 echo "5. Pointing the platform hostnames at this laptop (sudo)..."
+sudo -v
 hosts_remove
 printf '# >>> %s\n127.0.0.1 %s\n# <<< %s\n' "${HOSTS_MARK}" "${HOSTS}" "${HOSTS_MARK}" | sudo tee -a /etc/hosts >/dev/null
 flush_dns

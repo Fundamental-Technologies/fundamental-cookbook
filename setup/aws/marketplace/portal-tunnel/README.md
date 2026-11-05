@@ -6,7 +6,7 @@ The platform UI (`fundamental-portal.<BaseDomain>`) and API are reachable only t
 |---------|--------------|
 | `./portal-tunnel.sh up [region]` | Launches a tiny relay instance in the consumer VPC, points the four platform hostnames at `127.0.0.1` in `/etc/hosts`, and forwards local port 443 to the platform endpoint over AWS Systems Manager. Blocks until Ctrl-C. |
 | `./portal-tunnel.sh status [region]` | Shows the portal URL, endpoint, relay instance, and whether `/etc/hosts` and the local listener are set. |
-| `./portal-tunnel.sh down [region]` | Deletes the relay instance, its security group, role and instance profile, and restores `/etc/hosts`. |
+| `./portal-tunnel.sh down [region]` | Deletes this stack's relay instance, its security group, role and instance profile in that region, and restores `/etc/hosts`. |
 
 ## How it works
 
@@ -69,6 +69,9 @@ The region may also come from `AWS_REGION` / `AWS_DEFAULT_REGION`.
 - **`something already listens on local port 443`:** an earlier tunnel is still open, or another local service uses 443. Close it and run `up` again.
 - **The page does not load after the tunnel says it is open:** run `status`. `/etc/hosts` should be `set` and local 443 `listening`. Corporate DNS or VPN clients that bypass `/etc/hosts` can override it; pause them while you use the tunnel.
 - **The tunnel closes after a while:** SSM ends idle sessions (20 minutes by default). Run `up` again.
+- **`could not launch the relay`:** the message includes the EC2 error. Common causes are an instance type not offered in that subnet's Availability Zone (set `INSTANCE_TYPE=t3.micro`) or a policy that blocks public IPs (set `RELAY_SUBNET` to a subnet with a NAT or SSM endpoints).
+- **One tunnel at a time:** the tunnel owns local port 443, so close one deployment's tunnel before opening another.
+- **Cost:** the relay is one `t4g.micro` that runs until `down`. Run `down` when you are finished.
 - **`admin` / `admin` is rejected:** the initial password was already changed, or the sign-in page you used is not the platform's. Use `org-admin.sh` (below) to check and reset it.
 
 ## Reset the portal admin password
