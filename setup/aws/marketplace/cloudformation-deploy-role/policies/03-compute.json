@@ -133,6 +133,11 @@
         "eks:AssociateAccessPolicy",
         "eks:DisassociateAccessPolicy",
         "eks:ListAssociatedAccessPolicies",
+        "eks:CreatePodIdentityAssociation",
+        "eks:DeletePodIdentityAssociation",
+        "eks:DescribePodIdentityAssociation",
+        "eks:ListPodIdentityAssociations",
+        "eks:UpdatePodIdentityAssociation",
         "eks:TagResource",
         "eks:UntagResource",
         "eks:ListTagsForResource"
