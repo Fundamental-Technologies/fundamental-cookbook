@@ -405,6 +405,8 @@ aws cloudformation describe-stacks \
 
 From a host in your consumer VPC, open `https://<PlatformPortalHostName>` and sign in as `admin` with the password `admin`. You are asked to set a new password immediately; the initial one is temporary and stops working once you change it.
 
+No browser in the consumer VPC? [`portal-tunnel/`](./portal-tunnel/) opens the portal from your laptop over AWS Systems Manager.
+
 Use the portal to create API keys and invite the rest of your team.
 
 ---

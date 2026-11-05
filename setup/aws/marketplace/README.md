@@ -12,3 +12,4 @@ Deploy the Fundamental Platform into your AWS environment via AWS Marketplace an
 | [Image Bundle Guide](image-bundle-guide.md) | Optional: load the image bundle into your own ECR yourself (to pre-scan images first). By default the platform loads it automatically. |
 | [CloudFormation Deploy Role](cloudformation-deploy-role/) | IAM service role for deploying the platform |
 | [Cluster Debug Access](cluster-debug-access/) | Temporary `kubectl` access to the private EKS cluster over AWS Systems Manager (no SSH, VPN, or NAT) |
+| [Portal Tunnel](portal-tunnel/) | Open the portal and API from your laptop's browser over AWS Systems Manager, without a host in the consumer VPC |
