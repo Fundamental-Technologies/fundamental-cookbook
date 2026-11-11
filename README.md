@@ -15,4 +15,5 @@ Infrastructure setup guides for deploying the Fundamental Platform.
 | Guide | Description |
 |---|---|
 | [AWS Marketplace](setup/aws/marketplace/) | Deploy the Fundamental Platform via AWS Marketplace |
+| [Amazon SageMaker](setup/aws/sagemaker/) | Prerequisites for running NEXUS as a SageMaker endpoint from AWS Marketplace |
 | [Google Cloud](setup/gcp/marketplace/) | Deploy the Fundamental Platform into your Google Cloud project |
