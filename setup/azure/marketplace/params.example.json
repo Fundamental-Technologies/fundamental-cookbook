@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "deploymentName":         { "value": "fundamental" },
+    "computeImageId":         { "value": "REPLACE_WITH_IMAGE_ID_FROM_FUNDAMENTAL" },
+    "infraBundleVersion":     { "value": "REPLACE_WITH_INFRA_VERSION" },
+    "appBundleVersion":       { "value": "REPLACE_WITH_APP_VERSION" },
+    "aksAdminGroupObjectIds": { "value": ["REPLACE_WITH_ENTRA_GROUP_OBJECT_ID"] },
+    "userDomain":             { "value": "apps.example.com" },
+    "skrMiResourceId":        { "value": "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/fundamental-fun-mi-01" },
+    "skrAppClientId":         { "value": "REPLACE_WITH_SKR_APP_CLIENT_ID" }
+  }
+}
